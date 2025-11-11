@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search as SearchIcon } from 'lucide-react'
+import { Search as SearchIcon, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Input } from './input'
 import { Label } from './label'
 import { Button } from './button'
@@ -199,16 +199,36 @@ export default function Search() {
               Keywords <span className="text-red-500">*</span>
             </Label>
             <div ref={containerRef} className="relative">
-              <Input
-                id="keyword"
-                placeholder="Search for events..."
-                value={formData.keyword}
-                onChange={(e) => setFormData({...formData, keyword: e.target.value})}
-                onKeyDown={handleKeywordKeyDown}
-                onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
-                className="w-full px-2 py-1 h-8"
-                autoComplete="off"
-              />
+              <div className="relative flex items-center">
+                <Input
+                  id="keyword"
+                  placeholder="Search for events..."
+                  value={formData.keyword}
+                  onChange={(e) => setFormData({...formData, keyword: e.target.value})}
+                  onKeyDown={handleKeywordKeyDown}
+                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                  className="w-full px-2 py-1 h-8 pr-16"
+                  autoComplete="off"
+                />
+                {formData.keyword && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, keyword: ''})}
+                    className="absolute right-10 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-1 bg-transparent rounded"
+                    tabIndex="-1"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowSuggestions(!showSuggestions)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-1 bg-transparent rounded"
+                  tabIndex="-1"
+                >
+                  {showSuggestions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              </div>
 
               {showSuggestions && (
                 <ul className="absolute left-0 right-0 z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-sm text-sm">
