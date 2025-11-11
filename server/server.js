@@ -27,7 +27,8 @@ async function connectDB() {
     console.log('✅ Connected to MongoDB');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
-    process.exit(1);
+    // Do NOT exit the process — keep the server available for endpoints that don't require DB
+    // favoritesCollection will remain undefined until a successful connection is made.
   }
 }
 
@@ -49,6 +50,9 @@ app.get('/api/test', (req, res) => {
 // Get all favorites
 app.get('/api/favorites', async (req, res) => {
   try {
+    if (!favoritesCollection) {
+      return res.status(503).json({ error: 'Database not connected' })
+    }
     const favorites = await favoritesCollection.find({}).toArray();
     res.json(favorites);
   } catch (error) {
@@ -187,6 +191,9 @@ app.get('/api/spotify/artist', async (req, res) => {
 // Add event to favorites
 app.post('/api/favorites', async (req, res) => {
   try {
+    if (!favoritesCollection) {
+      return res.status(503).json({ error: 'Database not connected' })
+    }
     const event = req.body;
     
     // Check if event already exists
@@ -206,6 +213,9 @@ app.post('/api/favorites', async (req, res) => {
 // Remove event from favorites
 app.delete('/api/favorites/:id', async (req, res) => {
   try {
+    if (!favoritesCollection) {
+      return res.status(503).json({ error: 'Database not connected' })
+    }
     const { id } = req.params;
     
     const result = await favoritesCollection.deleteOne({ id: id });
