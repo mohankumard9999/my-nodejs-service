@@ -90,20 +90,56 @@ app.get('/api/suggest', async (req, res) => {
 // Ticketmaster Event Search API
 app.get('/api/events', async (req, res) => {
   try {
-    const { keyword, radius, segmentId, geoPoint } = req.query;
+    const { keyword, category, location, distance, autoDetect } = req.query;
+    
+    // Map category names to Ticketmaster segment IDs
+    const categoryMap = {
+      'all': null,
+      'music': 'KZFzniwnSyZfZ7v7nJ', // Music
+      'sports': 'KZFzniwnSyZfZ7v7nE', // Sports
+      'arts': 'KZFzniwnSyZfZ7v7na', // Arts & Theatre
+      'film': 'KZFzniwnSyZfZ7v7nn', // Film
+      'miscellaneous': 'KZFzniwnSyZfZ7v7n1'  // Miscellaneous
+    };
     
     // Build URL with parameters
     let url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${process.env.TICKETMASTER_API_KEY}`;
     
     if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
-    if (radius) url += `&radius=${radius}`;
-    if (segmentId && segmentId !== 'Default') url += `&segmentId=${segmentId}`;
-    if (geoPoint) url += `&geoPoint=${geoPoint}`;
     
-    url += `&unit=miles`;
+    // Add category filter if not "all"
+    const segmentId = categoryMap[category?.toLowerCase()];
+    if (segmentId) {
+      // Use segmentId parameter to filter by primary segment/category
+      url += `&segmentId=${segmentId}`;
+    }
+    
+    // Add location and distance for geographic filtering
+    if (location && location !== '' && autoDetect !== 'true') {
+      url += `&city=${encodeURIComponent(location)}`;
+    }
+    
+    if (distance) {
+      url += `&radius=${distance}&unit=miles`;
+    }
+    
+    console.log('Ticketmaster API URL:', url);
+    console.log('Category filter:', category, '-> Segment ID:', segmentId);
     
     const response = await fetch(url);
     const data = await response.json();
+    
+    // If we have a category filter, also defensively filter the results on backend
+    if (segmentId && data._embedded && data._embedded.events) {
+      const beforeCount = data._embedded.events.length;
+      data._embedded.events = data._embedded.events.filter(event => {
+        if (!event.classifications || event.classifications.length === 0) return false;
+        // Some events may have multiple classification entries — accept if any match the segment
+        return event.classifications.some(c => c && c.segment && c.segment.id === segmentId);
+      });
+      const afterCount = data._embedded.events.length;
+      console.log(`Filtered events by segmentId=${segmentId}: before=${beforeCount} after=${afterCount}`);
+    }
     
     res.json(data);
   } catch (error) {

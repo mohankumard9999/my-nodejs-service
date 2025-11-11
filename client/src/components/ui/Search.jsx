@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search as SearchIcon, ChevronDown, ChevronUp, X, Loader } from 'lucide-react'
+import { Search as SearchIcon, ChevronDown, ChevronUp, X, Loader, Heart } from 'lucide-react'
 import { Input } from './input'
 import { Label } from './label'
 import { Button } from './button'
@@ -8,7 +8,7 @@ import { Switch } from './switch'
 export default function Search() {
   const [formData, setFormData] = useState({
     keyword: '',
-    category: 'Default',
+    category: 'all',
     distance: '10',
     location: '',
     autoDetect: false
@@ -20,6 +20,8 @@ export default function Search() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const [isSearching, setIsSearching] = useState(false)
+  const [events, setEvents] = useState([])
+  const [favorites, setFavorites] = useState([])
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
   const lastTypedRef = useRef('')
@@ -50,14 +52,51 @@ export default function Search() {
       return
     }
     
+    // Clear errors on successful validation
+    setErrors({})
+    
     // Show loading state
     setIsSearching(true)
     
-    // Simulate search (will be replaced with actual API call)
-    setTimeout(() => {
-      setIsSearching(false)
-      console.log('Form submitted:', formData)
-    }, 1500)
+    // Build query parameters for GET request
+    const params = new URLSearchParams()
+    params.append('keyword', formData.keyword.trim())
+    params.append('category', formData.category)
+    params.append('distance', formData.distance)
+    params.append('location', formData.location.trim())
+    params.append('autoDetect', formData.autoDetect)
+    
+    console.log('Sending filters to API:', {
+      keyword: formData.keyword.trim(),
+      category: formData.category,
+      distance: formData.distance,
+      location: formData.location.trim(),
+      autoDetect: formData.autoDetect
+    })
+    
+    // Send GET request to backend
+    fetch(`/api/events?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log('Search results:', data)
+        // Parse events from Ticketmaster response
+        if (data._embedded && data._embedded.events) {
+          setEvents(data._embedded.events)
+        } else {
+          setEvents([])
+        }
+        setIsSearching(false)
+      })
+      .catch(err => {
+        console.error('Search error:', err)
+        setEvents([])
+        setIsSearching(false)
+      })
   }
 
   // Parse Ticketmaster suggest response into an array of suggestion strings.
@@ -313,12 +352,12 @@ export default function Search() {
               onChange={(e) => setFormData({...formData, category: e.target.value})}
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
             >
-              <option value="Default">All</option>
-              <option value="KZFzniwnSyZfZ7v7nJ">Music</option>
-              <option value="KZFzniwnSyZfZ7v7nE">Sports</option>
-              <option value="KZFzniwnSyZfZ7v7na">Arts & Theatre</option>
-              <option value="KZFzniwnSyZfZ7v7nn">Film</option>
-              <option value="KZFzniwnSyZfZ7v7n1">Miscellaneous</option>
+              <option value="all">All</option>
+              <option value="music">Music</option>
+              <option value="sports">Sports</option>
+              <option value="arts">Arts & Theatre</option>
+              <option value="film">Film</option>
+              <option value="miscellaneous">Miscellaneous</option>
             </select>
           </div>
 
@@ -422,21 +461,86 @@ export default function Search() {
         </div>
       </form>
 
-      {/* Results placeholder */}
-      <div className="mt-2">
-        <div className="text-center text-gray-500 py-12">
-          {isSearching ? (
+      {/* Results section */}
+      <div className="mt-8">
+        {isSearching ? (
+          <div className="text-center text-gray-500 py-12">
             <div className="flex flex-col items-center gap-3">
               <div className="w-12 h-12 border-4 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
               <p className="text-xs text-gray-600">Searching for events...</p>
             </div>
-          ) : (
-            <>
-              <SearchIcon className="w-8 h-8 mx-auto mb-4 text-gray-400" />
-              <p className="text-xs">Enter search criteria and click the Search button to find events.</p>
-            </>
-          )}
-        </div>
+          </div>
+        ) : events.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {events.map((event, idx) => {
+              // Extract date and time from localDate and localTime
+              const eventDate = event.dates?.start?.localDate || ''
+              const eventTime = event.dates?.start?.localTime || ''
+              const genre = event.classifications?.[0]?.segment?.name || 'Event'
+              const venueInfo = event._embedded?.venues?.[0]?.name || 'Venue TBA'
+              
+              return (
+                <div key={idx} className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow">
+                  {/* Event Image */}
+                  <div className="relative h-48 bg-gray-200 overflow-hidden">
+                    {event.images && event.images.length > 0 ? (
+                      <img src={event.images[0].url} alt={event.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                        <SearchIcon className="w-12 h-12 text-gray-400" />
+                      </div>
+                    )}
+                    
+                    {/* Genre Badge */}
+                    <div className="absolute top-3 left-3 bg-white text-black px-3 py-1 rounded-md text-xs font-medium">
+                      {genre}
+                    </div>
+                    
+                    {/* Date Badge - Format: "Jan 14, 2026, 06:00 PM" */}
+                    {eventDate && eventTime && (
+                      <div className="absolute top-3 right-3 bg-white text-gray-800 px-2 py-1 rounded text-xs font-semibold whitespace-nowrap">
+                        {new Date(`${eventDate}T${eventTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}, {new Date(`${eventDate}T${eventTime}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Event Details */}
+                  <div className="p-4">
+                    {/* Event Name and Heart Icon */}
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <h3 className="font-semibold text-sm text-gray-900 line-clamp-2 flex-1">{event.name}</h3>
+                      <button
+                        onClick={() => {
+                          if (favorites.includes(event.id)) {
+                            setFavorites(favorites.filter(id => id !== event.id))
+                          } else {
+                            setFavorites([...favorites, event.id])
+                          }
+                        }}
+                        className="flex-shrink-0 p-1.5 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                      >
+                        <Heart 
+                          size={18} 
+                          className="text-black"
+                          fill={favorites.includes(event.id) ? 'black' : 'none'}
+                          strokeWidth={2}
+                        />
+                      </button>
+                    </div>
+                    
+                    {/* Venue Name */}
+                    <p className="text-xs text-gray-600">{venueInfo}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 py-12">
+            <SearchIcon className="w-8 h-8 mx-auto mb-4 text-gray-400" />
+            <p className="text-xs">Enter search criteria and click the Search button to find events.</p>
+          </div>
+        )}
       </div>
     </div>
   )
