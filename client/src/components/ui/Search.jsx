@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search as SearchIcon, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { Search as SearchIcon, ChevronDown, ChevronUp, X, Loader } from 'lucide-react'
 import { Input } from './input'
 import { Label } from './label'
 import { Button } from './button'
@@ -19,6 +19,7 @@ export default function Search() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+  const [isSearching, setIsSearching] = useState(false)
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
   const lastTypedRef = useRef('')
@@ -49,7 +50,14 @@ export default function Search() {
       return
     }
     
-    console.log('Form submitted:', formData)
+    // Show loading state
+    setIsSearching(true)
+    
+    // Simulate search (will be replaced with actual API call)
+    setTimeout(() => {
+      setIsSearching(false)
+      console.log('Form submitted:', formData)
+    }, 1500)
   }
 
   // Parse Ticketmaster suggest response into an array of suggestion strings.
@@ -402,9 +410,13 @@ export default function Search() {
 
           {/* Search Button */}
           <div className="pt-6">
-            <Button type="submit" className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8">
-              <SearchIcon className="w-4 h-4 mr-2" />
-              Search Events
+            <Button type="submit" disabled={isSearching} className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8 disabled:opacity-70">
+              {isSearching ? (
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <SearchIcon className="w-4 h-4 mr-2" />
+              )}
+              {isSearching ? 'Searching...' : 'Search Events'}
             </Button>
           </div>
         </div>
@@ -413,8 +425,17 @@ export default function Search() {
       {/* Results placeholder */}
       <div className="mt-2">
         <div className="text-center text-gray-500 py-12">
-          <SearchIcon className="w-8 h-8 mx-auto mb-4 text-gray-400" />
-          <p className="text-xs">Enter search criteria and click the Search button to find events.</p>
+          {isSearching ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-12 h-12 border-4 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+              <p className="text-xs text-gray-600">Searching for events...</p>
+            </div>
+          ) : (
+            <>
+              <SearchIcon className="w-8 h-8 mx-auto mb-4 text-gray-400" />
+              <p className="text-xs">Enter search criteria and click the Search button to find events.</p>
+            </>
+          )}
         </div>
       </div>
     </div>
