@@ -21,6 +21,7 @@ export default function Search() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
+  const lastTypedRef = useRef('')
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -32,6 +33,15 @@ export default function Search() {
     }
     if (!formData.autoDetect && !formData.location.trim()) {
       newErrors.location = 'Location is required when auto-detect is disabled'
+    }
+    // Distance must be a number and within allowed range
+    const distNum = Number(formData.distance)
+    if (formData.distance === '' || isNaN(distNum)) {
+      newErrors.distance = 'Distance must be a number'
+    } else if (distNum <= 0) {
+      newErrors.distance = 'Distance must be a positive number'
+    } else if (distNum > 100) {
+      newErrors.distance = 'Distance cannot exceed 100 miles'
     }
     
     if (Object.keys(newErrors).length > 0) {
@@ -169,6 +179,36 @@ export default function Search() {
     setActiveIndex(-1)
   }
 
+  function handleKeywordChange(e) {
+    const v = e.target.value
+    lastTypedRef.current = v
+    setFormData((prev) => ({ ...prev, keyword: v }))
+    if (v && v.trim().length > 0) {
+      setShowSuggestions(true)
+    } else {
+      setShowSuggestions(false)
+      setSuggestions([])
+    }
+  }
+
+  function validateDistance(value) {
+    const v = String(value || '')
+    const num = Number(v)
+    setErrors((prev) => {
+      const next = { ...prev }
+      if (v === '' || isNaN(num)) {
+        next.distance = 'Distance must be a number'
+      } else if (num <= 0) {
+        next.distance = 'Distance must be a positive number'
+      } else if (num > 100) {
+        next.distance = 'Distance cannot exceed 100 miles'
+      } else {
+        delete next.distance
+      }
+      return next
+    })
+  }
+
   function handleKeywordKeyDown(e) {
     if (!showSuggestions || suggestions.length === 0) return
 
@@ -192,10 +232,10 @@ export default function Search() {
     <div className="w-full px-8 md:px-8 lg:px-60 py-4">
       <form onSubmit={handleSubmit}>
         {/* Single Row Layout */}
-        <div className="flex items-end gap-4">
+        <div className="flex items-start gap-4">
           {/* Keywords */}
-          <div className="flex-1">
-            <Label htmlFor="keyword" className="text-xs font-medium mb-2 block">
+          <div className="flex-1 min-h-fit">
+            <Label htmlFor="keyword" className={`text-xs font-medium mb-2 block ${errors.keyword ? 'text-red-500' : ''}`}>
               Keywords <span className="text-red-500">*</span>
             </Label>
             <div ref={containerRef} className="relative">
@@ -204,10 +244,10 @@ export default function Search() {
                   id="keyword"
                   placeholder="Search for events..."
                   value={formData.keyword}
-                  onChange={(e) => setFormData({...formData, keyword: e.target.value})}
+                  onChange={(e) => handleKeywordChange(e)}
                   onKeyDown={handleKeywordKeyDown}
-                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
-                  className="w-full px-2 py-1 h-8 pr-16"
+                  onFocus={() => { setShowSuggestions(true) }}
+                  className={`w-full px-2 py-1 h-8 pr-16 ${errors.keyword ? 'border-red-500 focus-visible:ring-1 focus-visible:ring-red-200' : ''}`}
                   autoComplete="off"
                 />
                 {formData.keyword && (
@@ -232,26 +272,30 @@ export default function Search() {
 
               {showSuggestions && (
                 <ul className="absolute left-0 right-0 z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-sm text-sm">
-                  {loadingSuggestions && (
-                    <li className="p-2 text-gray-500">Loading...</li>
-                  )}
-                  {!loadingSuggestions && suggestions.map((s, idx) => (
-                    <li
-                      key={`${s}-${idx}`}
-                      onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s) }}
-                      onMouseEnter={() => setActiveIndex(idx)}
-                      className={`cursor-pointer px-3 py-2 ${activeIndex === idx ? 'bg-gray-100' : ''}`}
-                    >
-                      {s}
-                    </li>
-                  ))}
+                      {loadingSuggestions && (
+                        <li className="p-2 text-gray-500">Loading...</li>
+                      )}
+                      {!loadingSuggestions && suggestions.length === 0 && showSuggestions && (
+                        <li className="p-3 text-gray-700">Start typing to see options</li>
+                      )}
+                      {!loadingSuggestions && suggestions.map((s, idx) => (
+                        <li
+                          key={`${s}-${idx}`}
+                          onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s) }}
+                          onMouseEnter={() => setActiveIndex(idx)}
+                          className={`cursor-pointer px-3 py-2 ${activeIndex === idx ? 'bg-gray-100' : ''}`}
+                        >
+                          {s}
+                        </li>
+                      ))}
                 </ul>
               )}
             </div>
+            <p className="text-red-500 text-xs mt-1 min-h-[1rem]">{errors.keyword || '\u00A0'}</p>
           </div>
 
           {/* Category */}
-          <div className="w-40">
+          <div className="w-40 min-h-fit">
             <Label htmlFor="category" className="text-xs font-medium mb-2 block">
               Category <span className="text-red-500">*</span>
             </Label>
@@ -271,42 +315,42 @@ export default function Search() {
           </div>
 
             {/* Location with Auto-detect on same line */}
-            {/* Location */}
             <div className="flex-1">
-                <div className="flex items-center justify-between mb-2">
-                    <Label htmlFor="location" className="text-xs text-black font-medium">
-                    Location <span className="text-red-500">*</span>
-                    </Label>
-                    <div className="flex items-center gap-2">
-                    <Label htmlFor="autoDetect" className="text-xs font-medium whitespace-nowrap">
-                        Auto-detect Location
-                    </Label>
-                    <Switch
-                        id="autoDetect"
-                        checked={formData.autoDetect}
-                        onCheckedChange={(checked) => {
-                            setFormData({
-                            ...formData,
-                            autoDetect: checked,
-                            location: checked ? '' : formData.location,
-                            })
-                        }}
-                    />
+              <div className="flex items-center justify-between mb-2 h-5">
+                <Label htmlFor="location" className={`text-xs text-black font-medium ${errors.location ? 'text-red-500' : ''}`}>
+                  Location <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="autoDetect" className={`text-xs font-medium whitespace-nowrap mb-0 ${errors.location ? 'text-red-500' : ''}`}>
+                    Auto-detect Location
+                  </Label>
+                  <Switch
+                    id="autoDetect"
+                    checked={formData.autoDetect}
+                    onCheckedChange={(checked) => {
+                      setFormData({
+                        ...formData,
+                        autoDetect: checked,
+                        location: checked ? '' : formData.location,
+                      })
+                    }}
+                  />
                 </div>
-            </div>
-            <Input
+              </div>
+              <Input
                 id="location"
                 placeholder="Enter city, district or street..."
                 value={formData.location}
                 onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
                 disabled={formData.autoDetect}
-                className="px-2 py-1 h-8"
-            />
+                className={`px-2 py-1 h-8 w-full ${errors.location ? 'border-red-500 focus-visible:ring-1 focus-visible:ring-red-200' : ''}`}
+              />
+              <p className="text-red-500 text-xs mt-1 min-h-[1rem]">{errors.location || '\u00A0'}</p>
             </div>
 
           {/* Distance */}
-          <div className="w-40">
-            <Label htmlFor="distance" className="text-xs font-medium mb-2 block">
+          <div className="w-40 min-h-fit">
+            <Label htmlFor="distance" className={`text-xs font-medium mb-2 block ${errors.distance ? 'text-red-500' : ''}`}>
               Distance <span className="text-red-500">*</span>
             </Label>
             <div className="relative">
@@ -314,19 +358,50 @@ export default function Search() {
                 id="distance"
                 type="number"
                 placeholder="10"
+                min={1}
+                max={100}
                 value={formData.distance}
-                onChange={(e) => setFormData({...formData, distance: e.target.value})}
-                className="w-full pr-12 h-8 text-xs"
+                onChange={(e) => {
+                  const v = e.target.value
+                  setFormData({...formData, distance: v})
+                  const num = Number(v)
+                  // If empty, set validation immediately
+                  if (v === '') {
+                    setErrors((prev) => ({ ...prev, distance: 'Distance must be a number' }))
+                    return
+                  }
+                  if (isNaN(num)) {
+                    setErrors((prev) => ({ ...prev, distance: 'Distance must be a number' }))
+                    return
+                  }
+                  if (num <= 0) {
+                    setErrors((prev) => ({ ...prev, distance: 'Distance must be a positive number' }))
+                    return
+                  }
+                  if (num > 100) {
+                    setErrors((prev) => ({ ...prev, distance: 'Distance cannot exceed 100 miles' }))
+                    return
+                  }
+                  // valid
+                  setErrors((prev) => {
+                    const next = { ...prev }
+                    delete next.distance
+                    return next
+                  })
+                }}
+                onBlur={(e) => validateDistance(e.target.value)}
+                className={`w-full pr-12 h-8 text-xs ${errors.distance ? 'border-red-500 focus-visible:ring-1 focus-visible:ring-red-200' : ''}`}
               />
               {/* Text inside the input */}
               <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-xs">
               miles
               </span>
             </div>
+            <p className="text-red-500 text-xs mt-1 min-h-[1rem]">{errors.distance || '\u00A0'}</p>
           </div>
 
           {/* Search Button */}
-          <div>
+          <div className="pt-6">
             <Button type="submit" className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8">
               <SearchIcon className="w-4 h-4 mr-2" />
               Search Events
