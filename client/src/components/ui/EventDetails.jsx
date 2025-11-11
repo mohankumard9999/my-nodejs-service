@@ -213,6 +213,18 @@ export default function EventDetails() {
                       <p className="font-medium">{genres.join(', ')}</p>
                     </div>
                   )}
+                  {event.priceRanges && event.priceRanges.length > 0 && (() => {
+                    const pr = event.priceRanges[0];
+                    const priceDisplay = pr.min === pr.max 
+                      ? `$${pr.min}` 
+                      : `$${pr.min} - $${pr.max}`;
+                    return (
+                      <div>
+                        <p className="text-gray-500 font-semibold">Price Range</p>
+                        <p className="font-medium">{priceDisplay} {pr.currency || 'USD'}</p>
+                      </div>
+                    );
+                  })()}
                   {status && statusConfig && (
                     <div>
                       <p className="text-gray-500 font-semibold">Ticket Status</p>

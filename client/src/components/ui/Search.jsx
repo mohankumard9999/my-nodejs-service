@@ -24,11 +24,24 @@ export default function Search() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const [isSearching, setIsSearching] = useState(false)
   const [events, setEvents] = useState([])
+  const [hasSearched, setHasSearched] = useState(false)
   // Global favorites
   const { favoritesSet, isFavorite, toggleFavorite } = useFavorites()
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
   const lastTypedRef = useRef('')
+
+  // Clear only keyword input
+  const handleClear = () => {
+    setFormData((prev) => ({ ...prev, keyword: '' }))
+    setSuggestions([])
+    setShowSuggestions(false)
+    // Trigger validation error for empty keyword
+    setErrors((prev) => ({
+      ...prev,
+      keyword: 'Please enter some keywords'
+    }))
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -61,6 +74,7 @@ export default function Search() {
     
     // Show loading state
     setIsSearching(true)
+    setHasSearched(true)
     
     // Build query parameters for GET request
     const params = new URLSearchParams()
@@ -212,7 +226,7 @@ export default function Search() {
         setSuggestions([])
         setShowSuggestions(false)
       }
-    }, 300)
+    }, 800) // Increased from 300ms to 800ms to reduce API calls
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -242,9 +256,20 @@ export default function Search() {
     setFormData((prev) => ({ ...prev, keyword: v }))
     if (v && v.trim().length > 0) {
       setShowSuggestions(true)
+      // Clear keyword error if user types
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.keyword
+        return next
+      })
     } else {
       setShowSuggestions(false)
       setSuggestions([])
+      // Show validation error when field is empty
+      setErrors((prev) => ({
+        ...prev,
+        keyword: 'Please enter some keywords'
+      }))
     }
   }
 
@@ -310,9 +335,10 @@ export default function Search() {
                 {formData.keyword && (
                   <button
                     type="button"
-                    onClick={() => setFormData({...formData, keyword: ''})}
+                    onClick={handleClear}
                     className="absolute right-10 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-1 bg-transparent rounded"
                     tabIndex="-1"
+                    title="Clear keyword"
                   >
                     <X size={16} />
                   </button>
@@ -390,13 +416,21 @@ export default function Search() {
                         autoDetect: checked,
                         location: checked ? '' : formData.location,
                       })
+                      // Clear location error when auto-detect is enabled
+                      if (checked) {
+                        setErrors((prev) => {
+                          const next = { ...prev }
+                          delete next.location
+                          return next
+                        })
+                      }
                     }}
                   />
                 </div>
               </div>
               <Input
                 id="location"
-                placeholder="Enter city, district or street..."
+                placeholder={formData.autoDetect ? "Location will be autodetected" : "Enter city, district or street..."}
                 value={formData.location}
                 onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
                 disabled={formData.autoDetect}
@@ -460,12 +494,8 @@ export default function Search() {
           {/* Search Button */}
           <div className="pt-6">
             <Button type="submit" disabled={isSearching} className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8 disabled:opacity-70 focus:outline-none focus-visible:outline-none">
-              {isSearching ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <SearchIcon className="w-4 h-4 mr-2" />
-              )}
-              {isSearching ? 'Searching...' : 'Search Events'}
+              <SearchIcon className="w-4 h-4 mr-2" />
+              Search Events
             </Button>
           </div>
         </div>
@@ -544,6 +574,12 @@ export default function Search() {
                 </div>
               )
             })}
+          </div>
+        ) : hasSearched && events.length === 0 ? (
+          <div className="text-center text-gray-500 py-12">
+            <SearchIcon className="w-8 h-8 mx-auto mb-4 text-gray-400" />
+            <p className="text-sm font-medium text-gray-700 mb-1">No results found</p>
+            <p className="text-xs text-gray-500">Try adjusting your search criteria</p>
           </div>
         ) : (
           <div className="text-center text-gray-500 py-12">

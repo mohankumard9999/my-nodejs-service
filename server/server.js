@@ -58,34 +58,12 @@ app.get('/api/favorites', async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Enrich any legacy docs missing snapshot/image/venue/date
-    const needsEnrichment = favorites.filter(f => !(f && f.snapshot && (f.image || (f.snapshot.images && f.snapshot.images.length)) && (f.venue || (f.snapshot._embedded && f.snapshot._embedded.venues)) && (f.date || (f.snapshot.dates && f.snapshot.dates.start))))
-    if (needsEnrichment.length > 0) {
-      const enriched = await Promise.all(needsEnrichment.map(async (doc) => {
-        try {
-          const url = `https://app.ticketmaster.com/discovery/v2/events/${doc.eventId}?apikey=${process.env.TICKETMASTER_API_KEY}`;
-          const r = await fetch(url)
-          if (!r.ok) return null
-          const ev = await r.json()
-          const imgPick = Array.isArray(ev.images) && (ev.images.find(i => (i.ratio || '').toLowerCase() === '16_9') || ev.images[0])
-          const patch = {
-            snapshot: ev,
-            image: doc.image || imgPick?.url || null,
-            venue: doc.venue || ev?._embedded?.venues?.[0]?.name || null,
-            date: doc.date || ev?.dates?.start?.localDate || null,
-          }
-          await favoritesCollection.updateOne({ _id: doc._id }, { $set: patch })
-          return { id: doc._id, patch }
-        } catch {
-          return null
-        }
-      }))
-      const map = new Map(enriched.filter(Boolean).map(e => [String(e.id), e.patch]))
-      favorites = favorites.map(f => {
-        const p = map.get(String(f._id))
-        return p ? { ...f, ...p } : f
-      })
-    }
+    // DISABLED: Favorites enrichment to save API quota
+    // This was calling Ticketmaster API for every favorite missing fields on EVERY page load
+    // If you need to re-enable this, do it as a one-time migration script instead
+    
+    // const needsEnrichment = favorites.filter(f => !(f && f.snapshot && (f.image || (f.snapshot.images && f.snapshot.images.length)) && (f.venue || (f.snapshot._embedded && f.snapshot._embedded.venues)) && (f.date || (f.snapshot.dates && f.snapshot.dates.start))))
+    // if (needsEnrichment.length > 0) { ... }
 
     res.json(favorites);
   } catch (error) {

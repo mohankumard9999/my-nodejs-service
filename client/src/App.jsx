@@ -3,6 +3,7 @@ import Navbar from './components/ui/Navbar'
 import Search from './components/ui/Search'
 import EventDetails from './components/ui/EventDetails'
 import Favorites from './components/ui/Favorites'
+import { Toaster } from './components/ui/sonner'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/event/:id" element={<EventDetails />} />
         <Route path="/favorites" element={<Favorites />} />
       </Routes>
+      <Toaster position="top-right" richColors />
     </div>
   )
 }
