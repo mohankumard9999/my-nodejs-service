@@ -17,7 +17,7 @@ export default function Navbar() {
           <div className="flex items-center gap-8">
             <Link
               to="/search"
-               className={`flex items-center gap-2 text-sm transition-colors focus:outline-none ${
+               className={`flex items-center gap-2 text-sm transition-colors focus:outline-none focus-visible:outline-none ${
                 location.pathname === '/search'
                   ? 'text-black'
                   : 'text-gray-500 hover:text-gray-700'
@@ -29,7 +29,7 @@ export default function Navbar() {
             
             <Link
               to="/favorites"
-              className={`flex items-center gap-2 text-sm transition-colors ${
+              className={`flex items-center gap-2 text-sm transition-colors focus:outline-none focus-visible:outline-none ${
                 location.pathname === '/favorites'
                   ? 'text-black'
                   : 'text-gray-500 hover:text-gray-700'

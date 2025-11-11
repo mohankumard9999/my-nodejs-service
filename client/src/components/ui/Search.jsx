@@ -5,6 +5,7 @@ import { Input } from './input'
 import { Label } from './label'
 import { Button } from './button'
 import { Switch } from './switch'
+import { useFavorites } from '../../contexts/FavoritesContext'
 
 export default function Search() {
   const navigate = useNavigate()
@@ -23,7 +24,8 @@ export default function Search() {
   const [activeIndex, setActiveIndex] = useState(-1)
   const [isSearching, setIsSearching] = useState(false)
   const [events, setEvents] = useState([])
-  const [favorites, setFavorites] = useState([])
+  // Global favorites
+  const { favoritesSet, isFavorite, toggleFavorite } = useFavorites()
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
   const lastTypedRef = useRef('')
@@ -99,6 +101,12 @@ export default function Search() {
         setEvents([])
         setIsSearching(false)
       })
+  }
+
+  function onToggleFavorite(ev, e) {
+    e.preventDefault()
+    e.stopPropagation()
+    toggleFavorite(ev)
   }
 
   // Parse Ticketmaster suggest response into an array of suggestion strings.
@@ -451,7 +459,7 @@ export default function Search() {
 
           {/* Search Button */}
           <div className="pt-6">
-            <Button type="submit" disabled={isSearching} className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8 disabled:opacity-70">
+            <Button type="submit" disabled={isSearching} className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8 disabled:opacity-70 focus:outline-none focus-visible:outline-none">
               {isSearching ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
@@ -516,22 +524,16 @@ export default function Search() {
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <h3 className="font-semibold text-sm text-gray-900 line-clamp-2 flex-1">{event.name}</h3>
                       <button
-                        onClick={() => {
-                          if (favorites.includes(event.id)) {
-                            setFavorites(favorites.filter(id => id !== event.id))
-                          } else {
-                            setFavorites([...favorites, event.id])
-                          }
-                        }}
+                        onClick={(e) => onToggleFavorite(event, e)}
                         onMouseDown={(e) => e.stopPropagation()}
-                        onClickCapture={(e) => e.stopPropagation()}
-                        className="flex-shrink-0 p-1.5 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                        className="flex-shrink-0 p-1.5 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors focus:outline-none focus-visible:outline-none"
+                        aria-label={isFavorite(event.id) ? 'Remove Favorite' : 'Add Favorite'}
                       >
-                        <Heart 
-                          size={18} 
+                        <Heart
+                          size={18}
                           className="text-black"
-                          fill={favorites.includes(event.id) ? 'black' : 'none'}
-                          strokeWidth={2}
+                          fill={isFavorite(event.id) ? 'red' : 'none'}
+                          strokeWidth={isFavorite(event.id) ? 0 : 1.5}
                         />
                       </button>
                     </div>

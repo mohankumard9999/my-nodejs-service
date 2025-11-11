@@ -9,7 +9,6 @@ const Switch = React.forwardRef(({ className, ...props }, ref) => (
     className={cn(
       // Track styles
       "peer relative inline-flex h-3 w-5 shrink-0 cursor-pointer items-center rounded-full transition-colors",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       "disabled:cursor-not-allowed disabled:opacity-50",
       "data-[state=checked]:bg-black data-[state=unchecked]:bg-gray-300",
       "focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0",

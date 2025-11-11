@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ExternalLink, Heart, Facebook, Twitter } from 'lucide-react'
+import { useFavorites } from '../../contexts/FavoritesContext'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
 
 export default function EventDetails() {
@@ -9,7 +10,7 @@ export default function EventDetails() {
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [fav, setFav] = useState(false)
+  const { isFavorite, toggleFavorite } = useFavorites()
   const [tab, setTab] = useState('info')
   const [spotifyLoading, setSpotifyLoading] = useState(false)
   const [spotifyError, setSpotifyError] = useState(null)
@@ -33,6 +34,8 @@ export default function EventDetails() {
     fetchDetails()
   }, [id])
 
+  // Global favorite status now comes from context
+
   const startDate = event?.dates?.start?.localDate || ''
   const startTime = event?.dates?.start?.localTime || ''
   const dateTime = startDate && startTime
@@ -51,28 +54,37 @@ export default function EventDetails() {
       cls.subGenre?.name,
       cls.type?.name,
       cls.subType?.name,
-    ].filter(Boolean)
+    ]
+      .filter(Boolean) // Remove undefined/null
+      .filter(g => g.toLowerCase() !== 'undefined') // Remove "undefined" strings
+      .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
     return order
   })()
   const seatmap = event?.seatmap?.staticUrl || null
   const ticketUrl = event?.url || null
   const status = event?.dates?.status?.code || ''
   const statusCfg = {
-    on_sale: 'bg-green-600 text-white',
-    onsale: 'bg-green-600 text-white',
-    offsale: 'bg-red-600 text-white',
-    canceled: 'bg-black text-white',
-    cancelled: 'bg-black text-white',
-    postponed: 'bg-orange-500 text-white',
-    rescheduled: 'bg-orange-500 text-white',
+    on_sale: { class: 'bg-green-600 text-white', label: 'On Sale' },
+    onsale: { class: 'bg-green-600 text-white', label: 'On Sale' },
+    offsale: { class: 'bg-red-600 text-white', label: 'Off Sale' },
+    canceled: { class: 'bg-black text-white', label: 'Canceled' },
+    cancelled: { class: 'bg-black text-white', label: 'Cancelled' },
+    postponed: { class: 'bg-orange-600 text-white', label: 'Postponed' },
+    rescheduled: { class: 'bg-orange-600 text-white', label: 'Rescheduled' },
   }
   const statusKey = (status || '').toLowerCase().replace(/\s+/g,'')
-  const statusClass = statusCfg[statusKey]
+  const statusConfig = statusCfg[statusKey]
 
   // Determine if event is Music related
   const isMusicEvent = !!event?.classifications?.some(
     (c) => (c.segment?.name || '').toLowerCase() === 'music'
   )
+
+  // Check if Info tab has any data to display
+  const hasInfoData = !!(dateTime || attractions.length > 0 || venue || genres.length > 0 || (status && statusConfig) || ticketUrl || seatmap)
+
+  // Check if Venue tab has any data to display
+  const hasVenueData = !!(venue && (venue.name || venue.address?.line1 || venue.city?.name || venue.state?.name || venue.url || (venue.images && venue.images.length > 0) || venue.parkingDetail || venue.generalInfo?.generalRule || venue.generalInfo?.childRule))
 
   // Determine primary artist name (prefer music segment)
   const primaryArtistName = (() => {
@@ -116,7 +128,7 @@ export default function EventDetails() {
       {/* Back link */}
       <button
         onClick={() => navigate(-1)}
-        className="flex items-center gap-1 text-sm text-gray-600 bg-transparent mb-6"
+        className="flex items-center gap-1 text-sm text-gray-600 bg-transparent mb-6 hover:text-gray-900 focus:outline-none focus-visible:outline-none"
       >
         <ArrowLeft size={16} /> Back to Search
       </button>
@@ -140,20 +152,21 @@ export default function EventDetails() {
                   href={ticketUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 bg-black text-white text-sm font-medium px-4 py-2 rounded hover:bg-gray-800"
+                  className="inline-flex items-center gap-1 bg-black text-white text-sm font-medium px-4 py-2 rounded hover:bg-gray-800 visited:text-white active:text-white focus:text-white [&:visited]:text-white"
                 >
                   Buy Tickets <ExternalLink size={14} />
                 </a>
               )}
               <button
-                onClick={() => setFav(f => !f)}
+                onClick={() => { if (event) toggleFavorite(event) }}
                 className="p-2 bg-white border border-gray-200 rounded hover:bg-gray-50"
                 aria-label="Toggle Favorite"
               >
                 <Heart
-                  size={20}
+                  size={16}
                   className="text-black"
-                  fill={fav ? 'black' : 'none'}
+                  fill={event?.id && isFavorite(event.id) ? 'red' : 'none'}
+                  strokeWidth={event?.id && isFavorite(event.id) ? 0 : 1.5}
                 />
               </button>
             </div>
@@ -162,9 +175,9 @@ export default function EventDetails() {
           {/* Tabs */}
           <Tabs value={tab} onValueChange={setTab} defaultValue="info" className="w-full">
             <TabsList className="w-full flex bg-gray-100 rounded-xl p-1 ring-1 ring-gray-200 shadow-sm">
-              <TabsTrigger value="info" className="btn-no-bg  flex-1 rounded-lg px-6 py-2 text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-gray-200">Info</TabsTrigger>
+              <TabsTrigger value="info" disabled={!hasInfoData} className="btn-no-bg disabled:opacity-50 disabled:pointer-events-none flex-1 rounded-lg px-6 py-2 text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-gray-200">Info</TabsTrigger>
               <TabsTrigger value="artists" disabled={!isMusicEvent} className="btn-no-bg disabled:opacity-50 disabled:pointer-events-none flex-1 rounded-lg px-6 py-2 text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-gray-200">Artist</TabsTrigger>
-              <TabsTrigger value="venue" className="btn-no-bg  flex-1 rounded-lg px-6 py-2 text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-gray-200">Venue</TabsTrigger>
+              <TabsTrigger value="venue" disabled={!hasVenueData} className="btn-no-bg disabled:opacity-50 disabled:pointer-events-none flex-1 rounded-lg px-6 py-2 text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-gray-200">Venue</TabsTrigger>
             </TabsList>
 
             {/* Info Tab */}
@@ -200,52 +213,48 @@ export default function EventDetails() {
                       <p className="font-medium">{genres.join(', ')}</p>
                     </div>
                   )}
-                  {status && statusClass && (
+                  {status && statusConfig && (
                     <div>
                       <p className="text-gray-500 font-semibold">Ticket Status</p>
-                      <span className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-semibold ${statusClass}`}>
-                        {status.replace(/_/g,' ')}
+                      <span className={`inline-block mt-1 px-3 py-1 rounded text-xs font-semibold ${statusConfig.class}`}>
+                        {statusConfig.label}
                       </span>
                     </div>
                   )}
-                  <div>
-                    {ticketUrl && (
-                      <>
-                        <p className="text-gray-500 font-semibold mb-2">Share</p>
-                        <div className="flex items-center gap-2">
-                          <a
-                            className="p-2 bg-white border border-gray-200 rounded hover:bg-gray-50 text-xs flex items-center justify-center"
-                            href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(ticketUrl)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label="Share on Facebook"
-                          >
-                            <Facebook className="w-4 h-4" />
-                          </a>
-                          <a
-                            className="p-2 bg-white border border-gray-200 rounded hover:bg-gray-50 text-xs flex items-center justify-center"
-                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check ${event.name} on Ticketmaster`)}&url=${encodeURIComponent(ticketUrl)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label="Share on Twitter"
-                          >
-                            <Twitter className="w-4 h-4" />
-                          </a>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-gray-500 font-semibold mb-3">Seatmap</p>
-                  {seatmap ? (
-                    <div className="border border-gray-200 rounded-md overflow-hidden">
-                      <img src={seatmap} alt="Seatmap" className="w-full h-auto" />
+                  {ticketUrl && (
+                    <div>
+                      <p className="text-gray-500 font-semibold mb-2">Share</p>
+                      <div className="flex items-center gap-2">
+                        <a
+                          className="p-2 bg-white border border-gray-200 rounded hover:bg-gray-50 text-xs flex items-center justify-center text-black visited:text-black hover:text-black"
+                          href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(ticketUrl)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label="Share on Facebook"
+                        >
+                          <Facebook className="w-4 h-4" />
+                        </a>
+                        <a
+                          className="p-2 bg-white border border-gray-200 rounded hover:bg-gray-50 text-xs flex items-center justify-center text-black visited:text-black hover:text-black"
+                          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check ${event.name} on Ticketmaster`)}&url=${encodeURIComponent(ticketUrl)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label="Share on Twitter"
+                        >
+                          <Twitter className="w-4 h-4" />
+                        </a>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="text-xs text-gray-500">Seatmap not available.</div>
                   )}
                 </div>
+                {seatmap && (
+                  <div>
+                    <p className="text-gray-500 font-semibold mb-3">Seatmap</p>
+                    <div className="border border-gray-200 rounded-md overflow-hidden max-w-2xl">
+                      <img src={seatmap} alt="Seatmap" className="w-full h-auto" />
+                    </div>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
@@ -271,18 +280,24 @@ export default function EventDetails() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="text-xl font-semibold mb-1 truncate">{spotify.artist.name}</h3>
-                        <p className="text-sm text-gray-600">Followers: {Number(spotify.artist.followers?.total || 0).toLocaleString()} <span className="mx-2">•</span> Popularity: {spotify.artist.popularity ?? 0}%</p>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-semibold text-black">Followers:</span> {Number(spotify.artist.followers?.total || 0).toLocaleString()}
+                          <span className="ml-4"></span>
+                          <span className="font-semibold text-black">Popularity:</span> {spotify.artist.popularity ?? 0}%
+                        </p>
                         {Array.isArray(spotify.artist.genres) && spotify.artist.genres.length > 0 && (
-                          <p className="text-sm text-gray-600 mt-1">Genres: {spotify.artist.genres.slice(0, 3).join(', ')}</p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            <span className="font-semibold text-black">Genres:</span> {spotify.artist.genres.slice(0, 3).join(', ')}
+                          </p>
                         )}
                         {spotify.artist.external_urls?.spotify && (
                           <a
                             href={spotify.artist.external_urls.spotify}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 mt-3 px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                            className="inline-flex items-center gap-1 mt-3 px-2.5 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 visited:text-white active:text-white focus:text-white [&:visited]:text-white"
                           >
-                            Open in Spotify <ExternalLink size={14} />
+                            Open in Spotify <ExternalLink size={11} />
                           </a>
                         )}
                       </div>
@@ -299,7 +314,13 @@ export default function EventDetails() {
                     ) : spotify.albums && spotify.albums.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                         {spotify.albums.map((al) => (
-                          <div key={al.id} className="rounded-lg overflow-hidden border border-gray-200">
+                          <a
+                            key={al.id}
+                            href={al.external_urls?.spotify}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-lg overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer block text-black visited:text-black active:text-black focus:text-black hover:text-black [&:visited]:text-black"
+                          >
                             <div className="aspect-square bg-gray-100 overflow-hidden">
                               {al.images && al.images[0] ? (
                                 <img src={al.images[0].url} alt={al.name} className="w-full h-full object-cover" />
@@ -310,7 +331,7 @@ export default function EventDetails() {
                               <p className="text-xs text-gray-500 mt-1">{al.release_date || ''}</p>
                               <p className="text-xs text-gray-500">{al.total_tracks || 0} tracks</p>
                             </div>
-                          </div>
+                          </a>
                         ))}
                       </div>
                     ) : (
@@ -325,31 +346,77 @@ export default function EventDetails() {
             <TabsContent value="venue" className="pt-6">
               {!venue && <p className="text-sm text-gray-500">No venue information available.</p>}
               {venue && (
-                <div className="space-y-4 text-sm">
-                  <div>
-                    <p className="text-gray-500">Name</p>
-                    <p className="font-medium">{venue.name}</p>
+                <div>
+                  {/* Header with name, address and See Events button */}
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl font-bold mb-1">{venue.name}</h3>
+                      {(venue.address?.line1 || venue.city?.name || venue.state?.name) && (
+                        <a
+                          href={`https://www.google.com/maps?q=${venue.location?.latitude},${venue.location?.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-gray-600 hover:text-gray-900 inline-flex items-center gap-1"
+                        >
+                          {[venue.address?.line1, venue.city?.name, venue.state?.name].filter(Boolean).join(', ')}
+                          <ExternalLink size={12} className="inline" />
+                        </a>
+                      )}
+                    </div>
+                    {venue.url && (
+                      <a
+                        href={venue.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-white border border-gray-300 text-black text-sm px-3 py-1.5 rounded hover:bg-gray-50 whitespace-nowrap shadow-sm visited:text-black active:text-black"
+                      >
+                        See Events <ExternalLink size={12} />
+                      </a>
+                    )}
                   </div>
-                  {(venue.address?.line1 || venue.city?.name || venue.state?.name) && (
-                    <div>
-                      <p className="text-gray-500">Address</p>
-                      <p className="font-medium">
-                        {[venue.address?.line1, venue.city?.name, venue.state?.name, venue.postalCode].filter(Boolean).join(', ')}
-                      </p>
+
+                  {/* Two-column layout: Image on left, details on right */}
+                  <div className={`grid grid-cols-1 gap-8 ${venue.images && venue.images.length > 0 ? 'lg:grid-cols-[500px_1fr]' : ''}`}>
+                    {/* Left column - Venue Image/Logo */}
+                    {venue.images && venue.images.length > 0 && (
+                      <div>
+                        <div className="border border-gray-200 rounded-lg overflow-hidden bg-white p-4">
+                          <img 
+                            src={venue.images[0].url} 
+                            alt={venue.name}
+                            className="w-full h-auto object-contain"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Right column - Venue details */}
+                    <div className="space-y-5 text-xs">
+                      {/* Parking Info */}
+                      {venue.parkingDetail && (
+                        <div>
+                          <p className="font-semibold text-gray-700 mb-1">Parking</p>
+                          <p className="text-gray-900">{venue.parkingDetail}</p>
+                        </div>
+                      )}
+
+                      {/* General Rule */}
+                      {venue.generalInfo?.generalRule && (
+                        <div>
+                          <p className="font-semibold text-gray-700 mb-1">General Rule</p>
+                          <p className="text-gray-900 whitespace-pre-line">{venue.generalInfo.generalRule}</p>
+                        </div>
+                      )}
+
+                      {/* Child Rule */}
+                      {venue.generalInfo?.childRule && (
+                        <div>
+                          <p className="font-semibold text-gray-700 mb-1">Child Rule</p>
+                          <p className="text-gray-900">{venue.generalInfo.childRule}</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {venue.timezone && (
-                    <div>
-                      <p className="text-gray-500">Timezone</p>
-                      <p className="font-medium">{venue.timezone}</p>
-                    </div>
-                  )}
-                  {venue.url && (
-                    <div>
-                      <p className="text-gray-500">Website</p>
-                      <a href={venue.url} target="_blank" rel="noopener noreferrer" className="text-black underline">{venue.url}</a>
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
             </TabsContent>
