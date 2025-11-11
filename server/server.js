@@ -201,8 +201,15 @@ app.get('/api/spotify/artist', async (req, res) => {
       const artist = searchData.artists.items[0];
       const artistId = artist.id;
       
-      // Get artist's albums
-      const albumsUrl = `https://api.spotify.com/v1/artists/${artistId}/albums?limit=3`;
+      // Get artist's albums - show up to 20 items
+      // Build query with URLSearchParams to avoid encoding issues
+      const albumParams = new URLSearchParams({
+        limit: '20',
+        offset: '0',
+        include_groups: 'album,single',
+        market: 'US',
+      });
+      const albumsUrl = `https://api.spotify.com/v1/artists/${artistId}/albums?${albumParams.toString()}`;
       const albumsResponse = await fetch(albumsUrl, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -210,10 +217,10 @@ app.get('/api/spotify/artist', async (req, res) => {
       });
       
       const albumsData = await albumsResponse.json();
-      
+      // Return items as-is (max 20); some artists may have fewer available in the set/market
       res.json({
         artist: artist,
-        albums: albumsData.items
+        albums: Array.isArray(albumsData.items) ? albumsData.items : []
       });
     } else {
       res.json({ artist: null, albums: [] });

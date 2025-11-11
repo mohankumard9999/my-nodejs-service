@@ -139,3 +139,8 @@ button:focus-visible {
     @apply bg-background text-foreground;
   }
 }
+
+.btn-no-bg {
+  background-color: transparent;
+  border: none;
+}

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Search as SearchIcon, Heart } from 'lucide-react'
+import { Search as SearchIcon, Heart, Menu } from 'lucide-react'
 
 export default function Navbar() {
   const location = useLocation()
@@ -39,6 +39,10 @@ export default function Navbar() {
               <span>Favorites</span>
             </Link>
           </div>
+          {/* Mobile menu placeholder icon (non-functional) */}
+          <button className="md:hidden p-2 rounded hover:bg-gray-100" aria-label="Open menu">
+            <Menu className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </div>

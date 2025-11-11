@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search as SearchIcon, ChevronDown, ChevronUp, X, Loader, Heart } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search as SearchIcon, ChevronDown, ChevronUp, X, Loader2, Heart } from 'lucide-react'
 import { Input } from './input'
 import { Label } from './label'
 import { Button } from './button'
 import { Switch } from './switch'
 
 export default function Search() {
+  const navigate = useNavigate()
   const [formData, setFormData] = useState({
     keyword: '',
     category: 'all',
@@ -451,7 +453,7 @@ export default function Search() {
           <div className="pt-6">
             <Button type="submit" disabled={isSearching} className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8 disabled:opacity-70">
               {isSearching ? (
-                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <SearchIcon className="w-4 h-4 mr-2" />
               )}
@@ -466,7 +468,7 @@ export default function Search() {
         {isSearching ? (
           <div className="text-center text-gray-500 py-12">
             <div className="flex flex-col items-center gap-3">
-              <div className="w-12 h-12 border-4 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+              <Loader2 className="w-12 h-12 text-gray-400 animate-spin" />
               <p className="text-xs text-gray-600">Searching for events...</p>
             </div>
           </div>
@@ -480,7 +482,11 @@ export default function Search() {
               const venueInfo = event._embedded?.venues?.[0]?.name || 'Venue TBA'
               
               return (
-                <div key={idx} className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow">
+                <div
+                  key={idx}
+                  className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow cursor-pointer"
+                  onClick={() => navigate(`/event/${event.id}`)}
+                >
                   {/* Event Image */}
                   <div className="relative h-48 bg-gray-200 overflow-hidden">
                     {event.images && event.images.length > 0 ? (
@@ -517,6 +523,8 @@ export default function Search() {
                             setFavorites([...favorites, event.id])
                           }
                         }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClickCapture={(e) => e.stopPropagation()}
                         className="flex-shrink-0 p-1.5 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
                       >
                         <Heart 

@@ -1,3 +1,3 @@
-export default function EventDetails() {
+export default function Favorites() {
   return <div>Favorites</div>
 }
