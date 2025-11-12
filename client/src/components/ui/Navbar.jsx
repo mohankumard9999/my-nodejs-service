@@ -96,6 +96,7 @@ export function MobileNavOverlay({ open, onClose }) {
   const location = useLocation()
   const isSearch = location.pathname === '/search'
   const isFavorites = location.pathname === '/favorites'
+  const isEventPage = location.pathname.startsWith('/event/')
 
   if (!open) return null
 
@@ -128,7 +129,7 @@ export function MobileNavOverlay({ open, onClose }) {
           {/* Search-like input row */}
             <button
               onClick={() => go('/search')}
-              className={`w-full flex items-center justify-between gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${isSearch ? 'bg-white' : 'bg-gray-100'}`}
+              className={`w-full flex items-center justify-between gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${(isSearch || isEventPage) ? 'bg-white' : 'bg-gray-100'}`}
             >
             <div className="flex items-center gap-3">
               <SearchIcon className="w-5 h-5 text-gray-600" />
@@ -139,7 +140,7 @@ export function MobileNavOverlay({ open, onClose }) {
           {/* Favorites row */}
             <button
               onClick={() => go('/favorites')}
-              className={`w-full flex items-center gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${isFavorites ? 'bg-white' : 'bg-gray-100'}`}
+              className={`w-full flex items-center gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${(isFavorites || isEventPage) ? 'bg-white' : 'bg-gray-100'}`}
             >
             <Heart className="w-5 h-5 text-gray-600" />
             <span className="text-sm text-gray-700">Favorites</span>
