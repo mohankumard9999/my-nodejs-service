@@ -74,7 +74,9 @@ export function FavoritesProvider({ children }) {
         // already exists, ensure id is present
         setIds(prev => new Set(prev).add(eventId))
         if (!silent) {
-          toast.success(`${eventObj.name} added to favorites!`)
+          toast.success(`${eventObj.name} added to favorites!`, {
+            description: 'You can view it in the Favorites page.'
+          })
         }
         return true
       }
@@ -89,7 +91,9 @@ export function FavoritesProvider({ children }) {
         })
       }
       if (!silent) {
-        toast.success(`${eventObj.name} added to favorites!`)
+        toast.success(`${eventObj.name} added to favorites!`, {
+          description: 'You can view it in the Favorites page.'
+        })
       }
       return true
     } catch (err) {

@@ -180,27 +180,27 @@ export default function EventDetails() {
 
       {!loading && !error && event && (
         <div>
-          {/* Header Row */}
-          <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight flex-1 min-w-[200px]">{event.name}</h1>
-            <div className="flex items-center gap-3">
+          {/* Header Row (mobile: actions beside name) */}
+          <div className="mb-6 flex items-start justify-between gap-3 md:gap-4 flex-wrap md:flex-nowrap">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight flex-1 min-w-[200px] leading-tight">{event.name}</h1>
+            <div className="flex items-center gap-2 md:gap-3 shrink-0">
               {ticketUrl && (
                 <a
                   href={ticketUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 bg-black text-white text-sm font-medium px-4 py-2 rounded hover:bg-gray-800 hover:text-white visited:text-white active:text-white focus:text-white [&:visited]:text-white [&:hover]:text-white"
+                  className="inline-flex items-center gap-1 bg-black text-white text-sm font-medium px-3 py-1.5 md:px-4 md:py-2 rounded-lg md:rounded hover:bg-gray-800 hover:text-white visited:text-white active:text-white focus:text-white [&:visited]:text-white [&:hover]:text-white"
                 >
                   Buy Tickets <ExternalLink size={14} />
                 </a>
               )}
               <button
                 onClick={() => { if (event) toggleFavorite(event) }}
-                className="p-2 bg-white border border-gray-200 rounded hover:bg-gray-50"
+                className="p-2 md:p-2 bg-white border border-gray-200 rounded-lg md:rounded hover:bg-gray-50 flex items-center justify-center"
                 aria-label="Toggle Favorite"
               >
                 <Heart
-                  size={16}
+                  size={18}
                   className="text-black"
                   fill={event?.id && isFavorite(event.id) ? 'red' : 'none'}
                   strokeWidth={event?.id && isFavorite(event.id) ? 0 : 1.5}
@@ -361,7 +361,7 @@ export default function EventDetails() {
                     {spotifyLoading ? (
                       <p className="text-sm text-gray-500">Loading albums...</p>
                     ) : spotify.albums && spotify.albums.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                         {spotify.albums.map((al) => (
                           <a
                             key={al.id}
@@ -397,18 +397,20 @@ export default function EventDetails() {
               {venue && (
                 <div>
                   {/* Header with name, address and See Events button */}
-                  <div className="flex items-start justify-between mb-6">
-                    <div>
+                  <div className="mb-3 sm:mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="min-w-0">
                       <h3 className="text-xl font-bold mb-1">{venue.name}</h3>
                       {(venue.address?.line1 || venue.city?.name || venue.state?.name) && (
                         <a
                           href={`https://www.google.com/maps?q=${venue.location?.latitude},${venue.location?.longitude}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-gray-600 hover:text-gray-900 inline-flex items-center gap-1"
+                          className="text-sm text-gray-600 hover:text-gray-900 inline-flex items-center gap-1 max-w-full"
                         >
-                          {[venue.address?.line1, venue.city?.name, venue.state?.name].filter(Boolean).join(', ')}
-                          <ExternalLink size={12} className="inline" />
+                          <span className="truncate max-w-full">
+                            {[venue.address?.line1, venue.city?.name, venue.state?.name].filter(Boolean).join(', ')}
+                          </span>
+                          <ExternalLink size={12} className="shrink-0" />
                         </a>
                       )}
                     </div>
@@ -417,12 +419,24 @@ export default function EventDetails() {
                         href={venue.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 bg-white border border-gray-300 text-black text-sm px-3 py-1.5 rounded hover:bg-gray-50 whitespace-nowrap shadow-sm visited:text-black active:text-black"
+                        className="hidden sm:inline-flex items-center gap-1.5 bg-white border border-gray-300 text-black text-sm px-3 py-1.5 rounded hover:bg-gray-50 whitespace-nowrap shadow-sm visited:text-black active:text-black"
                       >
                         See Events <ExternalLink size={12} />
                       </a>
                     )}
                   </div>
+
+                  {/* Mobile full-width See Events button */}
+                  {venue.url && (
+                    <a
+                      href={venue.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="sm:hidden mb-6 inline-flex w-full items-center justify-center gap-1.5 bg-white border border-gray-300 text-black text-sm px-4 py-3 rounded-xl hover:bg-gray-50 shadow-sm visited:text-black active:text-black"
+                    >
+                      See Events <ExternalLink size={12} />
+                    </a>
+                  )}
 
                   {/* Two-column layout: Image on left, details on right */}
                   <div className={`grid grid-cols-1 gap-8 ${venue.images && venue.images.length > 0 ? 'lg:grid-cols-[500px_1fr]' : ''}`}>

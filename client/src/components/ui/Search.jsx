@@ -515,7 +515,7 @@ export default function Search() {
   }
 
   return (
-    <div className="w-full px-8 md:px-8 lg:px-60 py-4">
+    <div className="w-full px-6 md:px-6 lg:px-60 py-4">
       <form onSubmit={handleSubmit}>
   {/* Responsive Grid Layout: stack on small screens, single row on md+ */}
   <div className="grid grid-cols-1 md:grid-cols-[1fr_10rem_1fr_8rem_auto] md:items-start gap-4">
@@ -634,38 +634,40 @@ export default function Search() {
 
             {/* Location (responsive: switch moves below on small screens) */}
             <div className="min-h-fit relative">
-              <Label htmlFor="location" className={`text-xs font-medium mb-2 block ${errors.location ? 'text-red-500' : ''}`}>
-                Location <span className="text-red-500">*</span>
-              </Label>
-              <div className="md:absolute md:top-0 md:right-0 flex items-center gap-2 -translate-y-[2px] md:translate-y-[0px] mb-2 md:mb-0">
-                <span className={`text-xs font-medium select-none ${errors.location ? 'text-red-500' : 'text-gray-700'}`}>Auto-detect Location</span>
-                <Switch
-                  id="autoDetect"
-                  checked={formData.autoDetect}
-                  onCheckedChange={(checked) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      autoDetect: checked,
-                      location: checked ? '' : prev.location,
-                    }))
-                    if (checked) {
-                      setErrors(prev => {
-                        const next = { ...prev }
-                        delete next.location
-                        return next
-                      })
-                    } else {
-                      // Auto-detect turned OFF: immediately validate location field
-                      setErrors(prev => {
-                        const next = { ...prev }
-                        if (!formData.location.trim()) {
-                          next.location = 'Location is required when auto-detect is disabled'
-                        }
-                        return next
-                      })
-                    }
-                  }}
-                />
+              <div className="flex items-center justify-between md:block">
+                <Label htmlFor="location" className={`text-xs font-medium mb-2 block ${errors.location ? 'text-red-500' : ''}`}>
+                  Location <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex items-center gap-2 md:absolute md:top-0 md:right-0 md:translate-y-0 -translate-y-[2px] mb-2 md:mb-0">
+                  <span className={`text-xs font-medium select-none ${errors.location ? 'text-red-500' : 'text-gray-700'}`}>Auto-detect Location</span>
+                  <Switch
+                    id="autoDetect"
+                    checked={formData.autoDetect}
+                    onCheckedChange={(checked) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        autoDetect: checked,
+                        location: checked ? '' : prev.location,
+                      }))
+                      if (checked) {
+                        setErrors(prev => {
+                          const next = { ...prev }
+                          delete next.location
+                          return next
+                        })
+                      } else {
+                        // Auto-detect turned OFF: immediately validate location field
+                        setErrors(prev => {
+                          const next = { ...prev }
+                          if (!formData.location.trim()) {
+                            next.location = 'Location is required when auto-detect is disabled'
+                          }
+                          return next
+                        })
+                      }
+                    }}
+                  />
+                </div>
               </div>
               <Input
                 id="location"
@@ -746,8 +748,12 @@ export default function Search() {
           </div>
 
           {/* Search Button */}
-          <div className="pt-2 md:pt-6 flex md:block">
-            <Button type="submit" disabled={isSearching} className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8 disabled:opacity-70 focus:outline-none focus-visible:outline-none">
+          <div className="pt-2 md:pt-6">
+            <Button
+              type="submit"
+              disabled={isSearching}
+              className="w-full md:w-auto flex items-center justify-center bg-black hover:bg-gray-800 text-white px-6 py-2 h-10 disabled:opacity-70 focus:outline-none focus-visible:outline-none"
+            >
               <SearchIcon className="w-4 h-4 mr-2" />
               Search Events
             </Button>
