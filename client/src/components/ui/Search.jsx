@@ -392,9 +392,13 @@ export default function Search() {
   }, [])
 
   function selectSuggestion(value) {
+    // Update keyword and close dropdown; suppress auto-reopen until user types again
     setFormData((prev) => ({ ...prev, keyword: value }))
+    setSuggestions([])
     setShowSuggestions(false)
     setActiveIndex(-1)
+    suppressSuggestRef.current = true
+    manualOpenRef.current = false
   }
 
   function handleKeywordChange(e) {
