@@ -27,19 +27,36 @@ export default function EventDetails() {
     async function fetchDetails() {
       const start = Date.now()
       try {
+        // Reset all event-specific state when ID changes to avoid stale data rendering
         setLoading(true)
+        setEvent(null)
+        setError(null)
+        setTab('info')
+        setSpotify({ artist: null, albums: [] })
+        setSpotifyFor('')
+        setSpotifyLoading(false)
+        setSpotifyError(null)
+        
         const res = await fetch(`/api/event/${id}`)
         if (!res.ok) throw new Error('Failed to load event details')
         const data = await res.json()
-        if (!cancelled) setEvent(data)
-      } catch (e) {
-        if (!cancelled) setError(e.message)
-      } finally {
+        
+        // Calculate remaining time needed to reach MIN_LOADER_MS
         const elapsed = Date.now() - start
         const remaining = Math.max(0, MIN_LOADER_MS - elapsed)
+        
+        // Wait for remaining time, then set both event and loading state together
         timeoutId = setTimeout(() => {
-          if (!cancelled) setLoading(false)
+          if (!cancelled) {
+            setEvent(data)
+            setLoading(false)
+          }
         }, remaining)
+      } catch (e) {
+        if (!cancelled) {
+          setError(e.message)
+          setLoading(false)
+        }
       }
     }
     fetchDetails()
@@ -96,8 +113,9 @@ export default function EventDetails() {
     (c) => (c.segment?.name || '').toLowerCase() === 'music'
   )
 
-  // Check if Info tab has any data to display
-  const hasInfoData = !!(dateTime || attractions.length > 0 || venue || genres.length > 0 || (status && statusConfig) || ticketUrl || seatmap)
+  // Check if Info tab has any data to display (include priceRanges)
+  const hasPriceRange = Array.isArray(event?.priceRanges) && event.priceRanges.length > 0
+  const hasInfoData = !!(dateTime || attractions.length > 0 || venue || genres.length > 0 || (status && statusConfig) || ticketUrl || seatmap || hasPriceRange)
 
   // Check if Venue tab has any data to display
   const hasVenueData = !!(venue && (venue.name || venue.address?.line1 || venue.city?.name || venue.state?.name || venue.url || (venue.images && venue.images.length > 0) || venue.parkingDetail || venue.generalInfo?.generalRule || venue.generalInfo?.childRule))
@@ -108,6 +126,33 @@ export default function EventDetails() {
     const music = attractions.find(a => a.classifications?.some(c => c.segment?.name?.toLowerCase() === 'music'))
     return (music?.name || attractions[0]?.name || '').trim()
   })()
+
+  // Compute the correct active tab synchronously based on current event data
+  // This ensures we never render with an invalid tab selected
+  const activeTab = (() => {
+    if (!event) return 'info' // Default while loading
+    
+    // If current tab is valid, keep it
+    if (tab === 'info' && hasInfoData) return 'info'
+    if (tab === 'artists' && isMusicEvent) return 'artists'
+    if (tab === 'venue' && hasVenueData) return 'venue'
+    
+    // Current tab is invalid, find first valid tab
+    if (hasInfoData) return 'info'
+    if (isMusicEvent) return 'artists'
+    if (hasVenueData) return 'venue'
+    
+    // Fallback (shouldn't happen if event has any data)
+    return 'info'
+  })()
+
+  // Synchronize tab state with computed active tab
+  useEffect(() => {
+    if (!event || loading) return
+    if (tab !== activeTab) {
+      setTab(activeTab)
+    }
+  }, [event, loading, activeTab, tab])
 
   // Fetch Spotify info when Artist tab becomes active
   useEffect(() => {
@@ -133,11 +178,6 @@ export default function EventDetails() {
       fetchSpotify(primaryArtistName)
     }
   }, [tab, primaryArtistName, spotifyFor, isMusicEvent])
-
-  // Ensure we don't stay on a disabled tab
-  useEffect(() => {
-    if (tab === 'artists' && !isMusicEvent) setTab('info')
-  }, [tab, isMusicEvent])
 
   return (
     <div className="px-6 md:px-16 lg:px-40 py-6">
@@ -210,7 +250,7 @@ export default function EventDetails() {
           </div>
 
           {/* Tabs */}
-          <Tabs value={tab} onValueChange={setTab} defaultValue="info" className="w-full">
+          <Tabs value={activeTab} onValueChange={setTab} className="w-full">
             <TabsList className="w-full flex bg-gray-100 rounded-xl p-1 ring-1 ring-gray-200 shadow-sm">
               <TabsTrigger value="info" disabled={!hasInfoData} className="btn-no-bg disabled:opacity-50 disabled:pointer-events-none flex-1 rounded-lg px-6 py-2 text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-gray-200">Info</TabsTrigger>
               <TabsTrigger value="artists" disabled={!isMusicEvent} className="btn-no-bg disabled:opacity-50 disabled:pointer-events-none flex-1 rounded-lg px-6 py-2 text-sm font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-gray-200">Artist</TabsTrigger>
