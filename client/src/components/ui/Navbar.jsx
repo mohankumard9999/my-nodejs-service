@@ -117,6 +117,23 @@ export function MobileNavOverlay({ open, onClose }) {
 
   function go(path) {
     onClose()
+    // For mobile, restore latest Search snapshot just like desktop
+    if (path === '/search') {
+      let snapshot = null
+      try {
+        const raw = sessionStorage.getItem('searchSnapshot')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed && typeof parsed === 'object' && parsed.formData && Array.isArray(parsed.events)) {
+            snapshot = parsed
+          }
+        }
+      } catch {}
+      if (snapshot) {
+        try { console.debug('[Navbar] Mobile Search tapped -> restoring snapshot', { eventsCount: snapshot.events.length, scrollY: snapshot.scrollY, hasSearched: !!snapshot.hasSearched }) } catch {}
+        return navigate(path, { state: { restore: snapshot } })
+      }
+    }
     navigate(path)
   }
 
