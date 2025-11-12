@@ -144,3 +144,40 @@ button:focus-visible {
   background-color: transparent;
   border: none;
 }
+
+/* Global click ripple effect */
+.click-ripple {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 12px; /* base size */
+  height: 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(59, 130, 246, 0.65); /* blue ring */
+  background: transparent; /* no fill */
+  transform: translate(-50%, -50%) scale(0.2);
+  pointer-events: none;
+  z-index: 9998;
+  animation: click-ripple-ring 500ms ease-out forwards;
+}
+
+@keyframes click-ripple-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(4); /* 12px * 4 => ~48px diameter */
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .click-ripple {
+    animation-duration: 0ms;
+    opacity: 0;
+  }
+}

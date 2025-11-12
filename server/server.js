@@ -1,304 +1,218 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient } = require('mongodb');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB Setup
+const DEBUG = process.env.DEBUG === 'true';
+const debug = (...args) => { if (DEBUG) console.debug(...args); };
+
 const client = new MongoClient(process.env.MONGODB_URI);
-let db;
 let favoritesCollection;
 const mongoDbName = process.env.MONGODB_DB_NAME || 'HW3';
+const collectionName = process.env.MONGODB_COLLECTION || 'favorites';
 
 async function connectDB() {
   try {
     await client.connect();
-    db = client.db(process.env.MONGODB_DB_NAME);
-    favoritesCollection = db.collection(process.env.MONGODB_COLLECTION);
+    const db = client.db(mongoDbName);
+    favoritesCollection = db.collection(collectionName);
     app.locals.db = db;
-    console.log('[mongo] connected', mongoDbName ? `db=${mongoDbName}` : '');
-    console.log('✅ Connected to MongoDB');
+    console.info('✅ MongoDB connected', mongoDbName ? `db=${mongoDbName}` : '');
+    console.info('📦 Using collection', collectionName);
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    // Do NOT exit the process — keep the server available for endpoints that don't require DB
-    // favoritesCollection will remain undefined until a successful connection is made.
+    console.error('❌ MongoDB connection error:', error.message || error);
   }
 }
-
-// Connect to database before starting server
 connectDB();
 
-// Test route
-app.get('/', (req, res) => {
-  res.send('Hello from App Engine!');
-});
+// Root route will be handled by SPA fallback if a client build is present.
+// Otherwise, we expose a simple text root endpoint after static setup below.
+app.get('/api/test', (_req, res) => res.json({ message: 'Backend is working!', timestamp: new Date() }));
 
-// ============ API ROUTES ============
-
-// Test API endpoint
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Backend is working!', timestamp: new Date() });
-});
-
-// Get all favorites
-app.get('/api/favorites', async (req, res) => {
+app.get('/api/favorites', async (_req, res) => {
   try {
-    if (!favoritesCollection) {
-      return res.status(503).json({ error: 'Database not connected' })
-    }
-    let favorites = await favoritesCollection
-      .find({})
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    // DISABLED: Favorites enrichment to save API quota
-    // This was calling Ticketmaster API for every favorite missing fields on EVERY page load
-    // If you need to re-enable this, do it as a one-time migration script instead
-    
-    // const needsEnrichment = favorites.filter(f => !(f && f.snapshot && (f.image || (f.snapshot.images && f.snapshot.images.length)) && (f.venue || (f.snapshot._embedded && f.snapshot._embedded.venues)) && (f.date || (f.snapshot.dates && f.snapshot.dates.start))))
-    // if (needsEnrichment.length > 0) { ... }
-
+    if (!favoritesCollection) return res.status(503).json({ error: 'Database not connected' });
+    const favorites = await favoritesCollection.find({}).sort({ createdAt: 1 }).toArray();
     res.json(favorites);
   } catch (error) {
-    console.error('Error fetching favorites:', error);
+    console.error('Error fetching favorites:', error.message || error);
     res.status(500).json({ error: 'Failed to fetch favorites' });
   }
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}...`);
+app.post('/api/favorites', async (req, res) => {
+  try {
+    if (!favoritesCollection) return res.status(503).json({ error: 'Database not connected' });
+    const raw = req.body || {}; const ev = raw.event || raw;
+    if (!ev || !ev.id || !ev.name) return res.status(400).json({ error: 'Invalid event payload' });
+    const eventId = ev.id;
+    const existing = await favoritesCollection.findOne({ eventId });
+    if (existing) return res.status(409).json({ error: 'Event already in favorites' });
+    const date = ev?.dates?.start?.localDate || null;
+    let image = null;
+    if (Array.isArray(ev.images) && ev.images.length > 0) {
+      const pick = ev.images.find(img => (img.ratio || '').toLowerCase() === '16_9') || ev.images[0];
+      image = pick?.url || null;
+    }
+    const venue = ev?._embedded?.venues?.[0]?.name || null;
+    const doc = { eventId, createdAt: new Date(), date, image, name: ev.name, venue, snapshot: ev };
+    const result = await favoritesCollection.insertOne(doc);
+    res.status(201).json({ message: 'Event added to favorites', id: result.insertedId, doc });
+  } catch (error) {
+    console.error('Error adding favorite:', error.message || error);
+    res.status(500).json({ error: 'Failed to add favorite' });
+  }
 });
 
-// Ticketmaster Autocomplete/Suggest API
+app.delete('/api/favorites/:id', async (req, res) => {
+  try {
+    if (!favoritesCollection) return res.status(503).json({ error: 'Database not connected' });
+    const { id } = req.params;
+    const result = await favoritesCollection.deleteOne({ eventId: id });
+    if (result.deletedCount === 0) return res.status(404).json({ error: 'Favorite not found' });
+    res.json({ message: 'Event removed from favorites' });
+  } catch (error) {
+    console.error('Error removing favorite:', error.message || error);
+    res.status(500).json({ error: 'Failed to remove favorite' });
+  }
+});
+
 app.get('/api/suggest', async (req, res) => {
   try {
     const { keyword } = req.query;
-    
-    if (!keyword) {
-      return res.status(400).json({ error: 'Keyword is required' });
-    }
-
+    if (!keyword) return res.status(400).json({ error: 'Keyword is required' });
     const url = `https://app.ticketmaster.com/discovery/v2/suggest?apikey=${process.env.TICKETMASTER_API_KEY}&keyword=${encodeURIComponent(keyword)}`;
-    
     const response = await fetch(url);
     const data = await response.json();
-    
     res.json(data);
   } catch (error) {
-    console.error('Error fetching suggestions:', error);
+    console.error('Error fetching suggestions:', error.message || error);
     res.status(500).json({ error: 'Failed to fetch suggestions' });
   }
 });
 
-// Ticketmaster Event Search API
 app.get('/api/events', async (req, res) => {
   try {
     const { keyword, category, location, distance, autoDetect } = req.query;
     const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
     const IPINFO_TOKEN = process.env.IPINFO_TOKEN;
-
-    // Simple in-memory cache for geocoding results to reduce API calls
-    // key: normalized address string, value: { lat, lng, ts }
     const geoCache = app.locals._geoCache || (app.locals._geoCache = new Map());
 
     async function geocodeAddress(address) {
       try {
-        if (!address || !GOOGLE_MAPS_API_KEY) {
-          console.log('Geocoding skipped: missing address or API key');
-          return null;
-        }
+        if (!address || !GOOGLE_MAPS_API_KEY) { debug('Geocode skipped: missing address or key'); return null; }
         const key = address.trim().toLowerCase();
-        if (geoCache.has(key)) {
-          console.log('Geocoding cache hit for:', key);
-          return geoCache.get(key);
-        }
+        if (geoCache.has(key)) { debug('Geocode cache hit:', key); return geoCache.get(key); }
         const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-        console.log('Calling Google Geocoding API for:', address);
+        debug('Geocode call:', address);
         const r = await fetch(url);
-        if (!r.ok) {
-          console.warn('Geocoding HTTP error:', r.status, r.statusText);
-          return null;
-        }
+        if (!r.ok) { console.warn('Geocode HTTP error', r.status, r.statusText); return null; }
         const gj = await r.json();
-        console.log('Geocoding response status:', gj.status);
-        
-        if (gj.status === 'ZERO_RESULTS') {
-          console.warn('Geocoding returned no results for:', address);
-          return null;
-        }
-        if (gj.status !== 'OK') {
-          console.warn('Geocoding failed with status:', gj.status, gj.error_message || '');
-          return null;
-        }
-        
+        debug('Geocode status:', gj.status);
+        if (gj.status === 'ZERO_RESULTS') { console.warn('Geocode zero results:', address); return null; }
+        if (gj.status !== 'OK') { console.warn('Geocode failure:', gj.status, gj.error_message || ''); return null; }
         const first = gj?.results?.[0]?.geometry?.location;
         if (first && typeof first.lat === 'number' && typeof first.lng === 'number') {
           const coords = { lat: first.lat, lng: first.lng, ts: Date.now() };
-          console.log('Geocoded successfully:', address, '->', coords.lat, coords.lng);
-          geoCache.set(key, coords);
-          return coords;
+            debug('Geocode success:', address, coords);
+          geoCache.set(key, coords); return coords;
         }
-      } catch (e) {
-        console.warn('Geocoding exception:', e?.message || e);
-      }
+      } catch (e) { console.warn('Geocode exception:', e?.message || e); }
       return null;
     }
-    
-    async function getLocationFromIP() {
+
+    async function ipLocate() {
       try {
-        if (!IPINFO_TOKEN) {
-          console.log('⚠ IPinfo token not available in environment, skipping IP geolocation');
-          return null;
-        }
-        
-        // Simply call ipinfo.io without IP parameter - it automatically detects the requesting client's IP
-        const url = `https://ipinfo.io/?token=${IPINFO_TOKEN}`;
-        console.log('Calling IPinfo API to auto-detect location');
+        if (!IPINFO_TOKEN) { debug('IP locate skipped: no token'); return null; }
+        const url = `https://ipinfo.io/?token=${IPINFO_TOKEN}`; debug('IPinfo call');
         const r = await fetch(url);
-        if (!r.ok) {
-          console.warn('IPinfo HTTP error:', r.status, r.statusText);
-          const errorText = await r.text().catch(() => '');
-          console.warn('IPinfo error response:', errorText);
-          return null;
-        }
-        const ipData = await r.json();
-        console.log('IPinfo response:', JSON.stringify(ipData, null, 2));
-        
-        // IPinfo returns loc as "lat,lng"
+        if (!r.ok) { console.warn('IPinfo HTTP error', r.status, r.statusText); return null; }
+        const ipData = await r.json(); debug('IPinfo data:', ipData);
         if (ipData && ipData.loc) {
           const [lat, lng] = ipData.loc.split(',').map(Number);
-          if (!isNaN(lat) && !isNaN(lng)) {
-            const coords = { lat, lng, city: ipData.city || '', region: ipData.region || '' };
-            console.log('✓ IP geolocation successful:', coords);
-            return coords;
-          } else {
-            console.warn('Invalid lat/lng from IPinfo:', ipData.loc);
-          }
-        } else {
-          console.warn('No "loc" field in IPinfo response');
-        }
-      } catch (e) {
-        console.warn('IP geolocation exception:', e?.message || e);
-      }
+          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng, city: ipData.city || '', region: ipData.region || '' };
+          console.warn('Invalid IPinfo loc', ipData.loc);
+        } else { console.warn('IPinfo missing loc field'); }
+      } catch (e) { console.warn('IPinfo exception:', e?.message || e); }
       return null;
     }
-    
-    // Map category names to Ticketmaster segment IDs
+
     const categoryMap = {
-      'all': null,
-      'music': 'KZFzniwnSyZfZ7v7nJ', // Music
-      'sports': 'KZFzniwnSyZfZ7v7nE', // Sports
-      'arts': 'KZFzniwnSyZfZ7v7na', // Arts & Theatre
-      'film': 'KZFzniwnSyZfZ7v7nn', // Film
-      'miscellaneous': 'KZFzniwnSyZfZ7v7n1'  // Miscellaneous
+      all: null,
+      music: 'KZFzniwnSyZfZ7v7nJ',
+      sports: 'KZFzniwnSyZfZ7v7nE',
+      arts: 'KZFzniwnSyZfZ7v7na',
+      film: 'KZFzniwnSyZfZ7v7nn',
+      miscellaneous: 'KZFzniwnSyZfZ7v7n1'
     };
-    
-  // Build URL with parameters
+
     let url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${process.env.TICKETMASTER_API_KEY}`;
-    
     if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
-    
-    // Add category filter if not "all"
     const segmentId = categoryMap[category?.toLowerCase()];
-    if (segmentId) {
-      // Use segmentId parameter to filter by primary segment/category
-      url += `&segmentId=${segmentId}`;
-    }
-    
-    // Add location and distance for geographic filtering
-    let locationCoords = null;
-    
+    if (segmentId) url += `&segmentId=${segmentId}`;
+
+    let coords = null;
     if (autoDetect === 'true') {
-      // Use IP-based geolocation when auto-detect is enabled
-      console.log('Auto-detect enabled, using IPinfo to detect location');
-      locationCoords = await getLocationFromIP();
-      
-      if (locationCoords) {
-        console.log('IP geolocation succeeded:', locationCoords);
-      } else {
-        console.warn('IP geolocation failed, will proceed without location filter');
-      }
-    } else if (location && location !== '') {
-      // Use manual location with geocoding
-      console.log('Manual location provided:', location);
-      locationCoords = await geocodeAddress(location);
+      debug('Auto-detect enabled');
+      coords = await ipLocate();
+      if (!coords) console.warn('IP geo failed; continuing without location');
+    } else if (location) {
+      coords = await geocodeAddress(location);
     }
-    
-    if (locationCoords && typeof locationCoords.lat === 'number' && typeof locationCoords.lng === 'number') {
-      url += `&latlong=${locationCoords.lat},${locationCoords.lng}`;
-      console.log('✓ Added latlong to Ticketmaster URL:', locationCoords.lat, locationCoords.lng);
-    } else if (location && location !== '' && autoDetect !== 'true') {
-      // Fallback: if geocode failed and we have a manual location, use city filter
-      console.log('Geocoding failed, falling back to city parameter:', location);
+
+    if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
+      url += `&latlong=${coords.lat},${coords.lng}`; debug('Added latlong');
+    } else if (location && autoDetect !== 'true') {
+      console.warn('Using city fallback for location filter');
       url += `&city=${encodeURIComponent(location)}`;
     } else {
-      console.warn('⚠ No location parameters added - search will be global');
+      debug('Global search (no location)');
     }
-    
-    if (distance) {
-      url += `&radius=${distance}&unit=miles`;
-    }
-    
-    console.log('Ticketmaster API URL:', url);
-    console.log('Category filter:', category, '-> Segment ID:', segmentId);
-    
+
+    if (distance) url += `&radius=${distance}&unit=miles`;
+    debug('Ticketmaster URL:', url); debug('Category:', category, 'Segment:', segmentId);
+
     const response = await fetch(url);
     const data = await response.json();
-    
-    // If we have a category filter, also defensively filter the results on backend
-    if (segmentId && data._embedded && data._embedded.events) {
-      const beforeCount = data._embedded.events.length;
-      data._embedded.events = data._embedded.events.filter(event => {
-        if (!event.classifications || event.classifications.length === 0) return false;
-        // Some events may have multiple classification entries — accept if any match the segment
-        return event.classifications.some(c => c && c.segment && c.segment.id === segmentId);
-      });
-      const afterCount = data._embedded.events.length;
-      console.log(`Filtered events by segmentId=${segmentId}: before=${beforeCount} after=${afterCount}`);
+
+    if (segmentId && data._embedded?.events) {
+      const before = data._embedded.events.length;
+      data._embedded.events = data._embedded.events.filter(ev => ev.classifications?.some(c => c.segment?.id === segmentId));
+      debug('Filtered events count:', before, '->', data._embedded.events.length);
     }
-    
+
     res.json(data);
   } catch (error) {
-    console.error('Error fetching events:', error);
+    console.error('Error fetching events:', error.message || error);
     res.status(500).json({ error: 'Failed to fetch events' });
   }
 });
 
-// Ticketmaster Event Details API
 app.get('/api/event/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
     const url = `https://app.ticketmaster.com/discovery/v2/events/${id}?apikey=${process.env.TICKETMASTER_API_KEY}`;
-    
     const response = await fetch(url);
     const data = await response.json();
-    
     res.json(data);
   } catch (error) {
-    console.error('Error fetching event details:', error);
+    console.error('Error fetching event details:', error.message || error);
     res.status(500).json({ error: 'Failed to fetch event details' });
   }
 });
 
-// Spotify Artist Search API
 app.get('/api/spotify/artist', async (req, res) => {
   try {
     const { name } = req.query;
-    
-    if (!name) {
-      return res.status(400).json({ error: 'Artist name is required' });
-    }
+    if (!name) return res.status(400).json({ error: 'Artist name is required' });
 
-    // Get Spotify access token
     const authResponse = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
@@ -307,120 +221,65 @@ app.get('/api/spotify/artist', async (req, res) => {
       },
       body: 'grant_type=client_credentials'
     });
-    
     const authData = await authResponse.json();
     const accessToken = authData.access_token;
 
-    // Search for artist
     const searchUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(name)}&type=artist&limit=1`;
-    const searchResponse = await fetch(searchUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
+    const searchResponse = await fetch(searchUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } });
     const searchData = await searchResponse.json();
-    
-    if (searchData.artists && searchData.artists.items.length > 0) {
+
+    if (searchData.artists?.items?.length) {
       const artist = searchData.artists.items[0];
       const artistId = artist.id;
-      
-      // Get artist's albums - show up to 20 items
-      // Build query with URLSearchParams to avoid encoding issues
-      const albumParams = new URLSearchParams({
-        limit: '20',
-        offset: '0',
-        include_groups: 'album,single',
-        market: 'US',
-      });
+      const albumParams = new URLSearchParams({ limit: '50', offset: '0', include_groups: 'album', market: 'US' });
       const albumsUrl = `https://api.spotify.com/v1/artists/${artistId}/albums?${albumParams.toString()}`;
-      const albumsResponse = await fetch(albumsUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-      
+      const albumsResponse = await fetch(albumsUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       const albumsData = await albumsResponse.json();
-      // Return items as-is (max 20); some artists may have fewer available in the set/market
-      res.json({
-        artist: artist,
-        albums: Array.isArray(albumsData.items) ? albumsData.items : []
-      });
+      res.json({ artist, albums: Array.isArray(albumsData.items) ? albumsData.items : [] });
     } else {
       res.json({ artist: null, albums: [] });
     }
   } catch (error) {
-    console.error('Error fetching Spotify data:', error);
+    console.error('Error fetching Spotify data:', error.message || error);
     res.status(500).json({ error: 'Failed to fetch Spotify data' });
   }
 });
 
-// Add event to favorites
-app.post('/api/favorites', async (req, res) => {
-  try {
-    if (!favoritesCollection) {
-      return res.status(503).json({ error: 'Database not connected' })
-    }
-    // Accept either { event: <tm-event> } or raw Ticketmaster event payload
-    const raw = req.body || {};
-    const ev = raw.event || raw;
-
-    if (!ev || !ev.id || !ev.name) {
-      return res.status(400).json({ error: 'Invalid event payload' })
-    }
-
-    // Derive fields for storage to match required shape
-    const eventId = ev.id;
-    const date = ev?.dates?.start?.localDate || null;
-    // Prefer a 16:9 image if available, else first image
-    let image = null;
-    if (Array.isArray(ev.images) && ev.images.length > 0) {
-      const pick = ev.images.find(img => (img.ratio || '').toLowerCase() === '16_9') || ev.images[0];
-      image = pick?.url || null;
-    }
-    const venue = ev?._embedded?.venues?.[0]?.name || null;
-
-    // Check if event already exists (by eventId)
-    const existing = await favoritesCollection.findOne({ eventId });
-    if (existing) {
-      return res.status(409).json({ error: 'Event already in favorites' });
-    }
-
-    const doc = {
-      eventId,
-      createdAt: new Date(),
-      date,
-      image,
-      name: ev.name,
-      venue,
-      snapshot: ev,
-    };
-
-    const result = await favoritesCollection.insertOne(doc);
-    res.status(201).json({ message: 'Event added to favorites', id: result.insertedId, doc });
-  } catch (error) {
-    console.error('Error adding favorite:', error);
-    res.status(500).json({ error: 'Failed to add favorite' });
-  }
+// Return JSON 404 for unknown API routes (kept after all known API handlers)
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
-// Remove event from favorites (by eventId)
-app.delete('/api/favorites/:id', async (req, res) => {
-  try {
-    if (!favoritesCollection) {
-      return res.status(503).json({ error: 'Database not connected' })
-    }
-    const { id } = req.params;
-    
-    const result = await favoritesCollection.deleteOne({ eventId: id });
-    
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ error: 'Favorite not found' });
-    }
-    
-    res.json({ message: 'Event removed from favorites' });
-  } catch (error) {
-    console.error('Error removing favorite:', error);
-    res.status(500).json({ error: 'Failed to remove favorite' });
+// ---- SPA static hosting (production) ----
+// If a built client exists at ../client/dist, serve it and fall back to index.html for non-API routes
+try {
+  // Try common build output locations; first match wins.
+  const candidates = [
+    path.resolve(__dirname, '../client/dist'), // monorepo-style: sibling client
+    path.resolve(__dirname, './client-dist'),  // copied into server directory
+    path.resolve(__dirname, './public'),       // conventional static folder
+  ];
+  const CLIENT_DIST = candidates.find(p => fs.existsSync(p));
+  if (CLIENT_DIST) {
+    app.locals.serveSpa = true;
+    app.use(express.static(CLIENT_DIST));
+    // Any non-API route should return the SPA index.html
+    app.get(/^(?!\/api).*/, (_req, res) => {
+      res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+    });
+    console.info('🧩 SPA static files served from', CLIENT_DIST);
+  } else {
+    app.locals.serveSpa = false;
+    console.info('ℹ️ No SPA build folder found (checked: ', candidates.join(', '), ')');
   }
-});
+} catch (e) {
+  console.warn('SPA static hosting setup failed:', e?.message || e);
+}
+
+// If SPA is not served, provide a simple root endpoint for sanity
+if (!app.locals.serveSpa) {
+  app.get('/', (_req, res) => res.send('Hello from App Engine!'));
+}
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.info(`🚀 Server listening on port ${PORT}`));

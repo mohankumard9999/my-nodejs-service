@@ -56,6 +56,7 @@ export function FavoritesProvider({ children }) {
       image: eventObj.images?.[0]?.url || null,
       venue: eventObj._embedded?.venues?.[0]?.name || null,
       date: eventObj.dates?.start?.localDate || null,
+      createdAt: new Date().toISOString(),
     }
     setDocsById(prev => {
       const m = new Map(prev)
@@ -136,7 +137,7 @@ export function FavoritesProvider({ children }) {
           label: 'Undo',
           onClick: async () => {
             if (removedDoc) {
-              console.log('Undo clicked! Re-adding event:', removedDoc)
+              // Re-add favorite after undo (silent to avoid duplicate add toast)
               // Use snapshot if available (contains original Ticketmaster event data)
               // Otherwise reconstruct event object from removedDoc
               const eventToReAdd = removedDoc.snapshot || {
@@ -144,9 +145,7 @@ export function FavoritesProvider({ children }) {
                 name: removedDoc.name,
                 ...removedDoc
               }
-              console.log('Event to re-add:', eventToReAdd)
               const success = await addFavorite(eventToReAdd, true)
-              console.log('Add favorite result:', success)
               if (success) {
                 // Reload favorites from server in background to get complete data
                 load()
@@ -179,7 +178,11 @@ export function FavoritesProvider({ children }) {
     favoritesIds: Array.from(ids),
     favoritesSet: ids,
     favoritesMap: docsById,
-    favoritesDocs: Array.from(docsById.values()),
+    favoritesDocs: Array.from(docsById.values()).sort((a,b) => {
+      const aT = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const bT = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return aT - bT
+    }),
     refreshFavorites: load,
     isFavorite,
     addFavorite,

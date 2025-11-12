@@ -8,9 +8,13 @@ export default function Favorites() {
   
   const { removeFavorite, isFavorite, favoritesDocs, loaded, error, refreshFavorites } = useFavorites()
 
-  // Load favorites on mount
+  // Load favorites on mount & always reset scroll to top when page is shown
   useEffect(() => {
     refreshFavorites()
+    // Use requestAnimationFrame to ensure after navigation paint
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    })
   }, [refreshFavorites])
 
   // Handler to remove favorite
@@ -23,9 +27,14 @@ export default function Favorites() {
   return (
     <div className="px-6 md:px-16 lg:px-64 py-6">
       <h2 className="text-3xl font-semibold mb-6">Favorites</h2>
-      {!loaded && <div className="text-sm text-gray-500">Loading favorites...</div>}
+  {/* Removed transient loading text per request */}
       {error && <div className="text-sm text-red-500">{error}</div>}
-      {loaded && favoritesDocs.length === 0 && <div className="text-sm text-gray-500">No favorites yet.</div>}
+      {loaded && favoritesDocs.length === 0 && (
+        <div className="text-center text-gray-500 py-12">
+          <p className="text-sm font-medium text-gray-700 mb-1">No favorite events yet.</p>
+          <p className="text-xs text-gray-500">Add events to your favorites by clicking the heart icon on any event.</p>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {favoritesDocs.map((fav) => {
           const ev = fav.snapshot || {}

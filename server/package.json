@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:client": "npm --prefix ../client run build",
+    "copy:client": "rm -rf client-dist && mkdir -p client-dist && cp -R ../client/dist/* client-dist/",
+    "build:spa": "npm run build:client && npm run copy:client"
   },
   "author": "",
   "license": "ISC",

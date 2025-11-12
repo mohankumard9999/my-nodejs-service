@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ExternalLink, Heart, Facebook, Twitter } from 'lucide-react'
 import { useFavorites } from '../../contexts/FavoritesContext'
@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
 export default function EventDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -127,7 +128,18 @@ export default function EventDetails() {
     <div className="px-6 md:px-16 lg:px-40 py-6">
       {/* Back link */}
       <button
-        onClick={() => navigate(-1)}
+        onClick={() => {
+          if (location?.state?.from === 'search') {
+            const snap = location.state?.searchSnapshot || null
+            if (snap) {
+              navigate('/search', { state: { restore: snap } })
+            } else {
+              navigate('/search')
+            }
+          } else {
+            navigate('/search')
+          }
+        }}
         className="flex items-center gap-1 text-sm text-gray-600 bg-transparent mb-6 hover:text-gray-900 focus:outline-none focus-visible:outline-none"
       >
         <ArrowLeft size={16} /> Back to Search
@@ -152,7 +164,7 @@ export default function EventDetails() {
                   href={ticketUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 bg-black text-white text-sm font-medium px-4 py-2 rounded hover:bg-gray-800 visited:text-white active:text-white focus:text-white [&:visited]:text-white"
+                  className="inline-flex items-center gap-1 bg-black text-white text-sm font-medium px-4 py-2 rounded hover:bg-gray-800 hover:text-white visited:text-white active:text-white focus:text-white [&:visited]:text-white [&:hover]:text-white"
                 >
                   Buy Tickets <ExternalLink size={14} />
                 </a>

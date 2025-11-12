@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Search as SearchIcon, ChevronDown, ChevronUp, X, Loader2, Heart } from 'lucide-react'
 import { Input } from './input'
 import { Label } from './label'
@@ -9,6 +9,7 @@ import { useFavorites } from '../../contexts/FavoritesContext'
 
 export default function Search() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [formData, setFormData] = useState({
     keyword: '',
     category: 'all',
@@ -30,6 +31,113 @@ export default function Search() {
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
   const lastTypedRef = useRef('')
+  const restoredRef = useRef(false)
+  // When true, suppress automatic suggestion fetching/showing until user types again.
+  const suppressSuggestRef = useRef(false)
+  // Track if this mount was due to a full page reload
+  const isReloadRef = useRef(false)
+  // Capture the form state at the moment a search is executed so later edits don't overwrite persisted snapshot
+  const lastSearchFormRef = useRef(null)
+  // Flag to skip persistence right after restoration
+  const skipPersistRef = useRef(false)
+  // Preserve last non-empty suggestions list so chevron toggle can restore it without refetch
+  const lastSuggestionsRef = useRef([])
+  // Track if user explicitly toggled/opened the suggestions (chevron or focus). Prevent auto-open on initial mount/reload.
+  const manualOpenRef = useRef(false)
+
+  // Restore search state (route-state takes precedence, then sessionStorage fallback)
+  useEffect(() => {
+    // Reset restoration flag to allow fresh restoration on each navigation
+    restoredRef.current = false
+    
+    // Detect full reload and clear any persisted snapshot so the form resets
+    try {
+      const nav = performance && performance.getEntriesByType && performance.getEntriesByType('navigation')?.[0]
+      if (nav && nav.type === 'reload') {
+        isReloadRef.current = true
+        sessionStorage.removeItem('searchSnapshot')
+      }
+    } catch {}
+
+    let timeout1, timeout2 // Track timeouts for cleanup
+
+    const st = location.state && location.state.restore
+    if (st && typeof st === 'object') {
+      restoredRef.current = true
+      suppressSuggestRef.current = true
+      skipPersistRef.current = true // Skip persistence during restoration
+      manualOpenRef.current = false
+      if (st.formData) setFormData(st.formData)
+      if (Array.isArray(st.events)) setEvents(st.events)
+      if (typeof st.hasSearched === 'boolean') setHasSearched(st.hasSearched)
+      setShowSuggestions(false)
+      navigate(location.pathname, { replace: true, state: {} })
+      // Allow persistence again after a brief delay
+      timeout1 = setTimeout(() => { skipPersistRef.current = false }, 100)
+      return () => clearTimeout(timeout1) // Cleanup
+    }
+
+    // If no route state restore occurred, attempt sessionStorage restore
+    // Always restore from sessionStorage if available (removed pristine check)
+    if (!restoredRef.current && !isReloadRef.current) {
+      try {
+        const raw = sessionStorage.getItem('searchSnapshot')
+        if (raw) {
+          const snap = JSON.parse(raw)
+          if (snap && typeof snap === 'object' && snap.formData && Array.isArray(snap.events)) {
+            restoredRef.current = true
+            suppressSuggestRef.current = true
+            skipPersistRef.current = true // Skip persistence during restoration
+            manualOpenRef.current = false
+            if (snap.formData) setFormData(snap.formData)
+            if (Array.isArray(snap.events)) setEvents(snap.events)
+            if (typeof snap.hasSearched === 'boolean') setHasSearched(snap.hasSearched)
+            setShowSuggestions(false)
+            // Allow persistence again after a brief delay
+            timeout2 = setTimeout(() => { skipPersistRef.current = false }, 100)
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to restore searchSnapshot from sessionStorage', e)
+      }
+    }
+
+    // Scroll only if nothing restored and not a reload (fresh entry)
+    requestAnimationFrame(() => {
+      if (!restoredRef.current && !isReloadRef.current) {
+        window.scrollTo({ top: 0, behavior: 'auto' })
+      }
+    })
+    
+    // If no restoration happened, allow persistence immediately
+    if (!restoredRef.current) {
+      skipPersistRef.current = false
+    }
+    
+    // Cleanup function
+    return () => {
+      if (timeout1) clearTimeout(timeout1)
+      if (timeout2) clearTimeout(timeout2)
+    }
+  // Include location.key so even same-path navigations that remount get handled
+  }, [location.key, location.pathname, location.state, navigate])
+
+  // Persist snapshot to sessionStorage whenever form data or search results change
+  useEffect(() => {
+    // Don't persist during restoration or before first search
+    if (skipPersistRef.current || !hasSearched) return
+    
+    // Use current formData to capture any edits user made after searching
+    const snapshot = {
+      formData: { ...formData },
+      events,
+      hasSearched,
+      timestamp: Date.now()
+    }
+    try {
+      sessionStorage.setItem('searchSnapshot', JSON.stringify(snapshot))
+    } catch {}
+  }, [formData, events, hasSearched])
 
   // Clear only keyword input
   const handleClear = () => {
@@ -75,6 +183,8 @@ export default function Search() {
     // Show loading state
     setIsSearching(true)
     setHasSearched(true)
+  // Freeze current form as the authoritative form for this search's snapshot
+  lastSearchFormRef.current = { ...formData }
     
     // Build query parameters for GET request
     const params = new URLSearchParams()
@@ -84,13 +194,7 @@ export default function Search() {
     params.append('location', formData.location.trim())
     params.append('autoDetect', formData.autoDetect)
     
-    console.log('Sending filters to API:', {
-      keyword: formData.keyword.trim(),
-      category: formData.category,
-      distance: formData.distance,
-      location: formData.location.trim(),
-      autoDetect: formData.autoDetect
-    })
+    // Filters ready; request will be sent to backend
     
     // Send GET request to backend
     fetch(`/api/events?${params.toString()}`, {
@@ -101,13 +205,37 @@ export default function Search() {
     })
       .then(res => res.json())
       .then(data => {
-        console.log('Search results:', data)
+  // Received search results
         // Parse events from Ticketmaster response
-        if (data._embedded && data._embedded.events) {
-          setEvents(data._embedded.events)
-        } else {
-          setEvents([])
+        let parsed = []
+        if (data._embedded && Array.isArray(data._embedded.events)) {
+          parsed = data._embedded.events.slice()
         }
+
+        // Sort events by their local date/time ascending
+        const nowYear = new Date().getFullYear()
+        const sorted = parsed.sort((a, b) => {
+          const aDate = a?.dates?.start?.localDate
+          const aTime = a?.dates?.start?.localTime
+          const bDate = b?.dates?.start?.localDate
+          const bTime = b?.dates?.start?.localTime
+
+          // Build full datetime strings only if date exists
+          const aDT = aDate ? new Date(`${aDate}${aTime ? `T${aTime}` : ''}`) : null
+          const bDT = bDate ? new Date(`${bDate}${bTime ? `T${bTime}` : ''}`) : null
+
+          const aValid = aDT && !isNaN(aDT.getTime())
+          const bValid = bDT && !isNaN(bDT.getTime())
+
+            // If both invalid, keep original relative order (stable-ish)
+          if (!aValid && !bValid) return 0
+          // Invalid dates go to the end
+          if (!aValid) return 1
+          if (!bValid) return -1
+          return aDT.getTime() - bDT.getTime()
+        })
+
+        setEvents(sorted)
         setIsSearching(false)
       })
       .catch(err => {
@@ -130,7 +258,6 @@ export default function Search() {
 
     // Ticketmaster may return embedded attractions, events, venues, or a suggestions array
     if (data._embedded) {
-      console.log('Embedded data:', data._embedded);
       if (data._embedded.attractions) {
         results.push(...data._embedded.attractions.map((a) => a.name).filter(Boolean))
       }
@@ -160,7 +287,12 @@ export default function Search() {
   async function fetchSuggestions(query) {
     if (!query || query.trim().length === 0) {
       setSuggestions([])
-      setShowSuggestions(false)
+      // Only show dropdown if user manually opened it; otherwise keep hidden on fresh load.
+      if (manualOpenRef.current) {
+        setShowSuggestions(true)
+      } else {
+        setShowSuggestions(false)
+      }
       return
     }
 
@@ -202,12 +334,17 @@ export default function Search() {
       }
 
       setSuggestions(final)
-      setShowSuggestions(final.length > 0)
+      if (final.length > 0) {
+        lastSuggestionsRef.current = final
+      }
+      // Always show the dropdown once user requested suggestions
+      setShowSuggestions(true)
       setActiveIndex(-1)
     } catch (err) {
       console.error('Suggestion fetch error', err)
       setSuggestions([])
-      setShowSuggestions(false)
+      // Show helper text only if user manually opened suggestions.
+      if (manualOpenRef.current) setShowSuggestions(true)
     } finally {
       setLoadingSuggestions(false)
     }
@@ -215,6 +352,15 @@ export default function Search() {
 
   // Debounce suggestion fetch when keyword changes
   useEffect(() => {
+    // Skip debounce fetching once immediately after restoration
+    if (restoredRef.current) {
+      restoredRef.current = false
+      return
+    }
+    // If suppression is active (just navigated back with restored state), do not auto fetch
+    if (suppressSuggestRef.current) {
+      return
+    }
     const q = formData.keyword
     // clear any existing timer
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -224,9 +370,10 @@ export default function Search() {
       if (q && q.trim().length > 0) fetchSuggestions(q.trim())
       else {
         setSuggestions([])
-        setShowSuggestions(false)
+        // Hide unless user explicitly opened dropdown.
+        if (!manualOpenRef.current) setShowSuggestions(false)
       }
-    }, 800) // Increased from 300ms to 800ms to reduce API calls
+    }, 300) // Debounce at ~300ms per assignment guidance
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -253,6 +400,10 @@ export default function Search() {
   function handleKeywordChange(e) {
     const v = e.target.value
     lastTypedRef.current = v
+    // First user input after restoration: lift suppression so normal behavior resumes
+    if (suppressSuggestRef.current) {
+      suppressSuggestRef.current = false
+    }
     setFormData((prev) => ({ ...prev, keyword: v }))
     if (v && v.trim().length > 0) {
       setShowSuggestions(true)
@@ -313,8 +464,8 @@ export default function Search() {
   return (
     <div className="w-full px-8 md:px-8 lg:px-60 py-4">
       <form onSubmit={handleSubmit}>
-        {/* Single Row Layout */}
-        <div className="flex items-start gap-4">
+  {/* Responsive Grid Layout: stack on small screens, single row on md+ */}
+  <div className="grid grid-cols-1 md:grid-cols-[1fr_10rem_1fr_8rem_auto] md:items-start gap-4">
           {/* Keywords */}
           <div className="flex-1 min-h-fit">
             <Label htmlFor="keyword" className={`text-xs font-medium mb-2 block ${errors.keyword ? 'text-red-500' : ''}`}>
@@ -328,7 +479,7 @@ export default function Search() {
                   value={formData.keyword}
                   onChange={(e) => handleKeywordChange(e)}
                   onKeyDown={handleKeywordKeyDown}
-                  onFocus={() => { setShowSuggestions(true) }}
+                  onFocus={() => { if (!suppressSuggestRef.current) setShowSuggestions(true) }}
                   className={`w-full px-2 py-1 h-8 pr-16 ${errors.keyword ? 'border-red-500 focus-visible:ring-1 focus-visible:ring-red-200' : ''}`}
                   autoComplete="off"
                 />
@@ -345,11 +496,42 @@ export default function Search() {
                 )}
                 <button
                   type="button"
-                  onClick={() => setShowSuggestions(!showSuggestions)}
+          onClick={(e) => {
+          e.stopPropagation()
+                    // If currently hidden, attempt to show previous suggestions first; if none, refetch.
+                    if (!showSuggestions) {
+                      manualOpenRef.current = true
+                      const trimmed = formData.keyword.trim()
+                      // If we have a preserved list from a prior fetch, reuse it.
+                      if (lastSuggestionsRef.current.length > 0) {
+                        setSuggestions(lastSuggestionsRef.current.slice(0))
+                        setShowSuggestions(true)
+                        setActiveIndex(-1)
+                      } else if (trimmed.length > 0) {
+                        // Fire an immediate fetch (no debounce) to populate suggestions, then open.
+              fetchSuggestions(trimmed)
+              setShowSuggestions(true)
+                      } else {
+                        // No keyword: open an empty dropdown with helper text
+                        setSuggestions([])
+                        setShowSuggestions(true)
+                      }
+                    } else {
+                      // Hiding suggestions preserves lastSuggestionsRef for later restoration
+                      manualOpenRef.current = false
+                      setShowSuggestions(false)
+                    }
+                  }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-1 bg-transparent rounded"
                   tabIndex="-1"
                 >
-                  {showSuggestions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  {loadingSuggestions ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : showSuggestions ? (
+                    <ChevronUp size={16} />
+                  ) : (
+                    <ChevronDown size={16} />
+                  )}
                 </button>
               </div>
 
@@ -378,7 +560,7 @@ export default function Search() {
           </div>
 
           {/* Category */}
-          <div className="w-40 min-h-fit">
+          <div className="min-h-fit md:w-full">
             <Label htmlFor="category" className="text-xs font-medium mb-2 block">
               Category <span className="text-red-500">*</span>
             </Label>
@@ -397,42 +579,61 @@ export default function Search() {
             </select>
           </div>
 
-            {/* Location with Auto-detect on same line */}
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-2 h-5">
-                <Label htmlFor="location" className={`text-xs text-black font-medium ${errors.location ? 'text-red-500' : ''}`}>
-                  Location <span className="text-red-500">*</span>
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="autoDetect" className={`text-xs font-medium whitespace-nowrap mb-0 ${errors.location ? 'text-red-500' : ''}`}>
-                    Auto-detect Location
-                  </Label>
-                  <Switch
-                    id="autoDetect"
-                    checked={formData.autoDetect}
-                    onCheckedChange={(checked) => {
-                      setFormData({
-                        ...formData,
-                        autoDetect: checked,
-                        location: checked ? '' : formData.location,
+            {/* Location (responsive: switch moves below on small screens) */}
+            <div className="min-h-fit relative">
+              <Label htmlFor="location" className={`text-xs font-medium mb-2 block ${errors.location ? 'text-red-500' : ''}`}>
+                Location <span className="text-red-500">*</span>
+              </Label>
+              <div className="md:absolute md:top-0 md:right-0 flex items-center gap-2 -translate-y-[2px] md:translate-y-[0px] mb-2 md:mb-0">
+                <span className={`text-xs font-medium select-none ${errors.location ? 'text-red-500' : 'text-gray-700'}`}>Auto-detect Location</span>
+                <Switch
+                  id="autoDetect"
+                  checked={formData.autoDetect}
+                  onCheckedChange={(checked) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      autoDetect: checked,
+                      location: checked ? '' : prev.location,
+                    }))
+                    if (checked) {
+                      setErrors(prev => {
+                        const next = { ...prev }
+                        delete next.location
+                        return next
                       })
-                      // Clear location error when auto-detect is enabled
-                      if (checked) {
-                        setErrors((prev) => {
-                          const next = { ...prev }
-                          delete next.location
-                          return next
-                        })
-                      }
-                    }}
-                  />
-                </div>
+                    } else {
+                      // Auto-detect turned OFF: immediately validate location field
+                      setErrors(prev => {
+                        const next = { ...prev }
+                        if (!formData.location.trim()) {
+                          next.location = 'Location is required when auto-detect is disabled'
+                        }
+                        return next
+                      })
+                    }
+                  }}
+                />
               </div>
               <Input
                 id="location"
                 placeholder={formData.autoDetect ? "Location will be autodetected" : "Enter city, district or street..."}
                 value={formData.location}
-                onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setFormData(prev => ({ ...prev, location: v }))
+                  // Live validation: if auto-detect is off, enforce non-empty
+                  if (!formData.autoDetect) {
+                    setErrors(prev => {
+                      const next = { ...prev }
+                      if (!v.trim()) {
+                        next.location = 'Location is required when auto-detect is disabled'
+                      } else {
+                        delete next.location
+                      }
+                      return next
+                    })
+                  }
+                }}
                 disabled={formData.autoDetect}
                 className={`px-2 py-1 h-8 w-full ${errors.location ? 'border-red-500 focus-visible:ring-1 focus-visible:ring-red-200' : ''}`}
               />
@@ -440,7 +641,7 @@ export default function Search() {
             </div>
 
           {/* Distance */}
-          <div className="w-40 min-h-fit">
+          <div className="min-h-fit md:w-full">
             <Label htmlFor="distance" className={`text-xs font-medium mb-2 block ${errors.distance ? 'text-red-500' : ''}`}>
               Distance <span className="text-red-500">*</span>
             </Label>
@@ -492,7 +693,7 @@ export default function Search() {
           </div>
 
           {/* Search Button */}
-          <div className="pt-6">
+          <div className="pt-2 md:pt-6 flex md:block">
             <Button type="submit" disabled={isSearching} className="bg-black hover:bg-gray-800 text-white px-6 py-1 h-8 disabled:opacity-70 focus:outline-none focus-visible:outline-none">
               <SearchIcon className="w-4 h-4 mr-2" />
               Search Events
@@ -518,17 +719,39 @@ export default function Search() {
               const eventTime = event.dates?.start?.localTime || ''
               const genre = event.classifications?.[0]?.segment?.name || 'Event'
               const venueInfo = event._embedded?.venues?.[0]?.name || 'Venue TBA'
+
+              // Image selection: prefer 16:9 ratio; fallback to first image
+              let imageUrl = null
+              if (Array.isArray(event.images) && event.images.length > 0) {
+                const sixteenNine = event.images.find(img => (img.ratio || '').toLowerCase() === '16_9')
+                imageUrl = sixteenNine?.url || event.images[0].url
+              }
+              // If image appears very tall (portrait), we'll use object-contain to reduce face cut-off risk
+              const isPortrait = (() => {
+                const match = imageUrl && event.images.find(i => i.url === imageUrl)
+                if (match && match.width && match.height) {
+                  return match.height > match.width * 1.15
+                }
+                return false
+              })()
               
               return (
                 <div
                   key={idx}
                   className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => navigate(`/event/${event.id}`)}
+                  onClick={() => navigate(`/event/${event.id}`, { state: { from: 'search', searchSnapshot: { formData, events, hasSearched } } })}
                 >
                   {/* Event Image */}
                   <div className="relative h-48 bg-gray-200 overflow-hidden">
-                    {event.images && event.images.length > 0 ? (
-                      <img src={event.images[0].url} alt={event.name} className="w-full h-full object-cover" />
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={event.name}
+                        className={
+                          `w-full h-full ${isPortrait ? 'object-contain bg-black/5' : 'object-cover object-top'} transition-[object-position] duration-300`
+                        }
+                        loading="lazy"
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gray-300">
                         <SearchIcon className="w-12 h-12 text-gray-400" />
@@ -540,10 +763,23 @@ export default function Search() {
                       {genre}
                     </div>
                     
-                    {/* Date Badge - Format: "Jan 14, 2026, 06:00 PM" */}
-                    {eventDate && eventTime && (
+                    {/* Date Badge - Format: "Jan 14, 06:00 PM" if current year, else include year */}
+                    {(eventDate || eventTime) && (
                       <div className="absolute top-3 right-3 bg-white text-gray-800 px-2 py-1 rounded text-xs font-semibold whitespace-nowrap">
-                        {new Date(`${eventDate}T${eventTime}`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}, {new Date(`${eventDate}T${eventTime}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                        {(() => {
+                          const d = new Date(`${eventDate || ''}${eventTime ? `T${eventTime}` : ''}`)
+                          const nowYear = new Date().getFullYear()
+                          const isValid = !isNaN(d.getTime())
+                          if (!isValid) return ''
+                          const showYear = d.getFullYear() !== nowYear
+                          const dateStr = d.toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            ...(showYear ? { year: 'numeric' } : {})
+                          })
+                          const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                          return `${dateStr}, ${timeStr}`
+                        })()}
                       </div>
                     )}
                   </div>
@@ -578,8 +814,8 @@ export default function Search() {
         ) : hasSearched && events.length === 0 ? (
           <div className="text-center text-gray-500 py-12">
             <SearchIcon className="w-8 h-8 mx-auto mb-4 text-gray-400" />
-            <p className="text-sm font-medium text-gray-700 mb-1">No results found</p>
-            <p className="text-xs text-gray-500">Try adjusting your search criteria</p>
+            <p className="text-sm font-medium text-gray-700 mb-1">Nothing found</p>
+            <p className="text-xs text-gray-500">Update the query to find events near you</p>
           </div>
         ) : (
           <div className="text-center text-gray-500 py-12">
