@@ -48,7 +48,7 @@ export default function Favorites() {
             <div
               key={fav._id || fav.eventId}
               className="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => navigate(`/event/${fav.eventId}`)}
+              onClick={() => navigate(`/event/${fav.eventId}`, { state: { from: 'favorites' } })}
             >
               <div className="relative h-60 bg-gray-200 overflow-hidden">
                 {image ? (

@@ -61,7 +61,19 @@ export default function Search() {
 
     let timeout1, timeout2 // Track timeouts for cleanup
 
-    const st = location.state && location.state.restore
+    // If route tells us to clear any persisted snapshot (e.g., we came from Favorites), do that
+    const routeState = location.state || {}
+    if (routeState.clearSnapshot) {
+      try { sessionStorage.removeItem('searchSnapshot') } catch {}
+      // Ensure no restoration happens and clear the history state flag
+      restoredRef.current = false
+      skipPersistRef.current = false
+      // Remove the clearSnapshot flag from history to avoid repeated clears
+      navigate(location.pathname, { replace: true, state: {} })
+      return
+    }
+
+    const st = routeState && routeState.restore
     if (st && typeof st === 'object') {
       restoredRef.current = true
       suppressSuggestRef.current = true

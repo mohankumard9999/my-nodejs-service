@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ExternalLink, Heart, Facebook, Twitter } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Heart, Facebook, Twitter, Loader2 } from 'lucide-react'
 import { useFavorites } from '../../contexts/FavoritesContext'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
 
@@ -19,20 +19,35 @@ export default function EventDetails() {
   const [spotifyFor, setSpotifyFor] = useState('')
 
   useEffect(() => {
+    // Ensure loader stays visible for at least MIN_LOADER_MS to avoid a flash
+    const MIN_LOADER_MS = 1000 // 1s minimum loader visibility
+    let timeoutId = null
+    let cancelled = false
+
     async function fetchDetails() {
+      const start = Date.now()
       try {
         setLoading(true)
         const res = await fetch(`/api/event/${id}`)
         if (!res.ok) throw new Error('Failed to load event details')
         const data = await res.json()
-        setEvent(data)
+        if (!cancelled) setEvent(data)
       } catch (e) {
-        setError(e.message)
+        if (!cancelled) setError(e.message)
       } finally {
-        setLoading(false)
+        const elapsed = Date.now() - start
+        const remaining = Math.max(0, MIN_LOADER_MS - elapsed)
+        timeoutId = setTimeout(() => {
+          if (!cancelled) setLoading(false)
+        }, remaining)
       }
     }
     fetchDetails()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
+    }
   }, [id])
 
   // Global favorite status now comes from context
@@ -129,6 +144,7 @@ export default function EventDetails() {
       {/* Back link */}
       <button
         onClick={() => {
+          // If we arrived here from the search results page, attempt to restore that snapshot
           if (location?.state?.from === 'search') {
             const snap = location.state?.searchSnapshot || null
             if (snap) {
@@ -136,6 +152,10 @@ export default function EventDetails() {
             } else {
               navigate('/search')
             }
+          } else if (location?.state?.from === 'favorites') {
+            // If navigated from Favorites, ensure we open a fresh/empty search page
+            // by instructing the Search page to clear any persisted snapshot
+            navigate('/search', { state: { clearSnapshot: true } })
           } else {
             navigate('/search')
           }
@@ -146,7 +166,12 @@ export default function EventDetails() {
       </button>
 
       {loading && (
-        <div className="py-20 text-center text-sm text-gray-500">Loading event details...</div>
+        <div className="py-20 text-center text-sm text-gray-500">
+          <div className="flex flex-col items-center gap-4 py-12">
+            <Loader2 className="w-10 h-10 text-gray-400 animate-spin" />
+            <p className="text-sm text-gray-600">Loading latest details ...</p>
+          </div>
+        </div>
       )}
 
       {error && (
