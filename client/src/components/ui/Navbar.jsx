@@ -73,7 +73,7 @@ export default function Navbar() {
 
           {/* Mobile menu icon */}
           <button
-            className="md:hidden p-2 rounded bg-white"
+            className="md:hidden p-2 rounded bg-transparent"
             aria-label="Open menu"
             onClick={() => setMobileOpen(true)}
           >
@@ -107,9 +107,10 @@ export function MobileNavOverlay({ open, onClose }) {
   const overlay = (
     // Dropdown panel anchored at top (full-width) so it overlays the search form beneath like the screenshot
     <div className="fixed top-0 left-0 right-0 z-[9999] md:hidden">
-      {/* Revert previous revert: remove extra border/shadow/rounded to return to plain header container */}
-      <div className="bg-white">
-        <div className="flex items-center justify-between px-4 py-3">
+      {/* Shadow applied to the whole menu panel so it appears under the opened hamburger menu, not under the title */}
+      <div className="bg-white shadow-md">
+  {/* Match base navbar height to avoid title shift when opening menu */}
+  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           {/* Match base navbar title sizing so it doesn't appear to resize when menu opens */}
           <h1 className="text-xl font-bold text-black">Events Around</h1>
           <button
@@ -123,12 +124,12 @@ export function MobileNavOverlay({ open, onClose }) {
 
   {/* Divider removed per updated request for a clean header-to-list transition */}
 
-        <div className="space-y-2">
+  <div className="space-y-1 py-1 px-4">
           {/* Search-like input row */}
-          <button
-            onClick={() => go('/search')}
-            className={`w-full flex items-center justify-between gap-3 rounded-md text-left ${isSearch ? 'bg-white' : 'bg-gray-100'}`}
-          >
+            <button
+              onClick={() => go('/search')}
+              className={`w-full flex items-center justify-between gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${isSearch ? 'bg-white' : 'bg-gray-100'}`}
+            >
             <div className="flex items-center gap-3">
               <SearchIcon className="w-5 h-5 text-gray-600" />
               <span className="text-sm text-gray-700">Search</span>
@@ -136,10 +137,10 @@ export function MobileNavOverlay({ open, onClose }) {
           </button>
 
           {/* Favorites row */}
-          <button
-            onClick={() => go('/favorites')}
-            className={`w-full flex items-center gap-3 rounded-md text-left ${isFavorites ? 'bg-white' : 'bg-gray-100'}`}
-          >
+            <button
+              onClick={() => go('/favorites')}
+              className={`w-full flex items-center gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${isFavorites ? 'bg-white' : 'bg-gray-100'}`}
+            >
             <Heart className="w-5 h-5 text-gray-600" />
             <span className="text-sm text-gray-700">Favorites</span>
           </button>

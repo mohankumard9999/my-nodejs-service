@@ -748,11 +748,13 @@ export default function Search() {
           </div>
 
           {/* Search Button */}
-          <div className="pt-2 md:pt-6">
+          <div className="pt-2 md:pt-0">
+            {/* Placeholder label on desktop to match label height/margin of other fields */}
+            <div className="hidden md:block text-xs font-medium mb-2">&nbsp;</div>
             <Button
               type="submit"
               disabled={isSearching}
-              className="w-full md:w-auto flex items-center justify-center bg-black hover:bg-gray-800 text-white px-6 py-2 h-10 disabled:opacity-70 focus:outline-none focus-visible:outline-none"
+              className="w-full md:w-auto flex items-center justify-center bg-black hover:bg-gray-800 text-white px-6 py-2 h-10 md:h-8 disabled:opacity-70 focus:outline-none focus-visible:outline-none"
             >
               <SearchIcon className="w-4 h-4 mr-2" />
               Search Events

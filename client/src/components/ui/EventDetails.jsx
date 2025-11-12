@@ -329,7 +329,20 @@ export default function EventDetails() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="text-xl font-semibold mb-1 truncate">{spotify.artist.name}</h3>
-                        <p className="text-sm text-gray-600">
+                        {/* Stats: mobile shows values on a new line; desktop keeps inline */}
+                        <div className="md:hidden mt-1 text-sm text-gray-600">
+                          <div className="grid grid-cols-2 gap-6">
+                            <div>
+                              <div className="font-semibold text-black">Followers:</div>
+                              <div>{Number(spotify.artist.followers?.total || 0).toLocaleString()}</div>
+                            </div>
+                            <div>
+                              <div className="font-semibold text-black">Popularity:</div>
+                              <div>{spotify.artist.popularity ?? 0}%</div>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="hidden md:block text-sm text-gray-600">
                           <span className="font-semibold text-black">Followers:</span> {Number(spotify.artist.followers?.total || 0).toLocaleString()}
                           <span className="ml-4"></span>
                           <span className="font-semibold text-black">Popularity:</span> {spotify.artist.popularity ?? 0}%
