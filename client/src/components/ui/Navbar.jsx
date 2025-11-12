@@ -46,10 +46,25 @@ export default function Navbar() {
               } catch (e) {
                 // ignore parse errors
               }
+              const onDesktopSearchClick = () => {
+                try {
+                  const info = {
+                    hasSnapshot: !!snapshot,
+                    eventsCount: snapshot?.events?.length || 0,
+                    hasSearched: !!snapshot?.hasSearched,
+                    scrollY: typeof snapshot?.scrollY === 'number' ? snapshot.scrollY : null,
+                    timestamp: snapshot?.timestamp || null,
+                    pathname: location.pathname,
+                    source: 'NavbarDesktop'
+                  }
+                  console.debug('[Navbar] Desktop Search clicked -> restoring snapshot if present', info)
+                } catch {}
+              }
               return (
                 <Link
                   to="/search"
                   state={snapshot ? { restore: snapshot } : undefined}
+                  onClick={onDesktopSearchClick}
                   className={`flex items-center gap-2 text-sm transition-colors focus:outline-none focus-visible:outline-none ${
                     location.pathname === '/search' ? 'text-black' : 'text-gray-500 hover:text-gray-700'
                   }`}

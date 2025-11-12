@@ -55,12 +55,13 @@ export default function Search() {
     skipSessionRestoreRef.current = false
     try { console.debug('[Search] mount, location.state=', location.state) } catch {}
     
-    // Detect full reload and clear any persisted snapshot so the form resets
+    // Detect full reload; do NOT clear the snapshot automatically.
+    // Keeping snapshot ensures desktop navbar restoration remains reliable across navigations.
     try {
       const nav = performance && performance.getEntriesByType && performance.getEntriesByType('navigation')?.[0]
       if (nav && nav.type === 'reload') {
         isReloadRef.current = true
-        sessionStorage.removeItem('searchSnapshot')
+        try { console.debug('[Search] page reload detected - preserving existing searchSnapshot for retention') } catch {}
       }
     } catch {}
 
@@ -92,17 +93,24 @@ export default function Search() {
       if (Array.isArray(st.events)) setEvents(st.events)
       if (typeof st.hasSearched === 'boolean') setHasSearched(st.hasSearched)
       setShowSuggestions(false)
-        // Restore scroll position if present in the route-state snapshot
-        try {
-          const restoredScroll = typeof st.scrollY === 'number' ? st.scrollY : 0
-          requestAnimationFrame(() => {
-            try { window.scrollTo({ top: restoredScroll, behavior: 'auto' }) } catch {}
-          })
-        } catch {}
-        // Immediately persist the restored snapshot so other navigations (e.g., via Navbar)
+      // Determine restored scroll and apply on next frame
+      const restoredScroll = typeof st.scrollY === 'number' ? st.scrollY : 0
+      try {
+        requestAnimationFrame(() => {
+          try { window.scrollTo({ top: restoredScroll, behavior: 'auto' }) } catch {}
+        })
+      } catch {}
+      // Immediately persist the restored snapshot so other navigations (e.g., via Navbar)
       // can find the latest snapshot even if the user navigates away quickly.
       try {
-          const newSnap = { formData: st.formData || {}, events: Array.isArray(st.events) ? st.events : [], hasSearched: !!st.hasSearched, scrollY: typeof window !== 'undefined' ? window.scrollY : 0, timestamp: Date.now() }
+        const newSnap = {
+          formData: st.formData || {},
+          events: Array.isArray(st.events) ? st.events : [],
+          hasSearched: !!st.hasSearched,
+          // Use restoredScroll here (not current window.scrollY which may still be 0)
+          scrollY: restoredScroll,
+          timestamp: Date.now()
+        }
         sessionStorage.setItem('searchSnapshot', JSON.stringify(newSnap))
         try { console.debug('[Search] wrote restored snapshot to sessionStorage', newSnap) } catch {}
       } catch {}
@@ -184,9 +192,47 @@ export default function Search() {
       timestamp: Date.now()
     }
     try {
+      try { console.debug('[Search] persist -> writing session snapshot', { eventsCount: events.length, hasSearched, scrollY: snapshot.scrollY, ts: snapshot.timestamp }) } catch {}
       sessionStorage.setItem('searchSnapshot', JSON.stringify(snapshot))
     } catch {}
   }, [formData, events, hasSearched])
+
+  // Desktop: keep snapshot.scrollY fresh while user scrolls (throttled) and log diagnostics
+  const scrollLogRef = useRef(null)
+  useEffect(() => {
+    function onScrollCapture() {
+      if (scrollLogRef.current) return
+      scrollLogRef.current = setTimeout(() => {
+        try {
+          const currY = typeof window !== 'undefined' ? window.scrollY : 0
+          const raw = sessionStorage.getItem('searchSnapshot')
+          const snap = raw ? JSON.parse(raw) : null
+          // Log what we see
+          console.debug('[Search] scroll observe', {
+            currentScrollY: currY,
+            storedScrollY: typeof snap?.scrollY === 'number' ? snap.scrollY : null,
+            eventsCount: Array.isArray(snap?.events) ? snap.events.length : null,
+            hasSearched: !!snap?.hasSearched,
+            ts: snap?.timestamp || null
+          })
+          // Update only scrollY if we have a valid snapshot and the value changed
+          if (snap && typeof snap === 'object' && Array.isArray(snap.events) && snap.hasSearched === true) {
+            if (typeof snap.scrollY !== 'number' || Math.abs((snap.scrollY || 0) - currY) >= 4) {
+              const next = { ...snap, scrollY: currY, timestamp: Date.now() }
+              sessionStorage.setItem('searchSnapshot', JSON.stringify(next))
+              try { console.debug('[Search] scroll -> updated snapshot.scrollY', { scrollY: currY, eventsCount: next.events.length, ts: next.timestamp }) } catch {}
+            }
+          }
+        } catch {}
+        scrollLogRef.current = null
+      }, 250) // throttle updates
+    }
+    window.addEventListener('scroll', onScrollCapture, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScrollCapture)
+      if (scrollLogRef.current) { clearTimeout(scrollLogRef.current); scrollLogRef.current = null }
+    }
+  }, [])
 
   // Clear only keyword input
   const handleClear = () => {
