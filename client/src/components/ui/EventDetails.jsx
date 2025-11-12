@@ -31,7 +31,7 @@ export default function EventDetails() {
         setLoading(true)
         setEvent(null)
         setError(null)
-        setTab('info')
+        // Don't reset tab here - let activeTab computation handle it after data loads
         setSpotify({ artist: null, albums: [] })
         setSpotifyFor('')
         setSpotifyLoading(false)
@@ -130,14 +130,14 @@ export default function EventDetails() {
   // Compute the correct active tab synchronously based on current event data
   // This ensures we never render with an invalid tab selected
   const activeTab = (() => {
-    if (!event) return 'info' // Default while loading
+    if (!event) return tab // Keep current tab state while loading
     
-    // If current tab is valid, keep it
+    // If current tab is valid for this event, keep it
     if (tab === 'info' && hasInfoData) return 'info'
     if (tab === 'artists' && isMusicEvent) return 'artists'
     if (tab === 'venue' && hasVenueData) return 'venue'
     
-    // Current tab is invalid, find first valid tab
+    // Current tab is invalid for this event, find first valid tab
     if (hasInfoData) return 'info'
     if (isMusicEvent) return 'artists'
     if (hasVenueData) return 'venue'
@@ -146,7 +146,7 @@ export default function EventDetails() {
     return 'info'
   })()
 
-  // Synchronize tab state with computed active tab
+  // Synchronize tab state with computed active tab after event loads
   useEffect(() => {
     if (!event || loading) return
     if (tab !== activeTab) {
