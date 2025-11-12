@@ -36,6 +36,8 @@ export default function Search() {
   const suppressSuggestRef = useRef(false)
   // Track if this mount was due to a full page reload
   const isReloadRef = useRef(false)
+  // When true, skip attempting to restore from sessionStorage for this mount
+  const skipSessionRestoreRef = useRef(false)
   // Capture the form state at the moment a search is executed so later edits don't overwrite persisted snapshot
   const lastSearchFormRef = useRef(null)
   // Flag to skip persistence right after restoration
@@ -49,6 +51,9 @@ export default function Search() {
   useEffect(() => {
     // Reset restoration flag to allow fresh restoration on each navigation
     restoredRef.current = false
+    // Reset any one-time skip flags for session restore so each mount starts fresh
+    skipSessionRestoreRef.current = false
+    try { console.debug('[Search] mount, location.state=', location.state) } catch {}
     
     // Detect full reload and clear any persisted snapshot so the form resets
     try {
@@ -61,14 +66,17 @@ export default function Search() {
 
     let timeout1, timeout2 // Track timeouts for cleanup
 
-    // If route tells us to clear any persisted snapshot (e.g., we came from Favorites), do that
+    // If route tells us to clear any persisted snapshot for THIS navigation (e.g., we came from Favorites),
+    // skip restoring from sessionStorage for this mount but DO NOT delete the persisted snapshot so that
+    // subsequent navigations (e.g., clicking Search from Favorites later) can still restore it.
     const routeState = location.state || {}
     if (routeState.clearSnapshot) {
-      try { sessionStorage.removeItem('searchSnapshot') } catch {}
+      skipSessionRestoreRef.current = true
       // Ensure no restoration happens and clear the history state flag
       restoredRef.current = false
       skipPersistRef.current = false
-      // Remove the clearSnapshot flag from history to avoid repeated clears
+      try { console.debug('[Search] clearSnapshot requested: skipping session restore for this mount') } catch {}
+      // Remove the clearSnapshot flag from history to avoid repeated behavior
       navigate(location.pathname, { replace: true, state: {} })
       return
     }
@@ -79,10 +87,25 @@ export default function Search() {
       suppressSuggestRef.current = true
       skipPersistRef.current = true // Skip persistence during restoration
       manualOpenRef.current = false
+      try { console.debug('[Search] restoring from route state, st=', st) } catch {}
       if (st.formData) setFormData(st.formData)
       if (Array.isArray(st.events)) setEvents(st.events)
       if (typeof st.hasSearched === 'boolean') setHasSearched(st.hasSearched)
       setShowSuggestions(false)
+        // Restore scroll position if present in the route-state snapshot
+        try {
+          const restoredScroll = typeof st.scrollY === 'number' ? st.scrollY : 0
+          requestAnimationFrame(() => {
+            try { window.scrollTo({ top: restoredScroll, behavior: 'auto' }) } catch {}
+          })
+        } catch {}
+        // Immediately persist the restored snapshot so other navigations (e.g., via Navbar)
+      // can find the latest snapshot even if the user navigates away quickly.
+      try {
+          const newSnap = { formData: st.formData || {}, events: Array.isArray(st.events) ? st.events : [], hasSearched: !!st.hasSearched, scrollY: typeof window !== 'undefined' ? window.scrollY : 0, timestamp: Date.now() }
+        sessionStorage.setItem('searchSnapshot', JSON.stringify(newSnap))
+        try { console.debug('[Search] wrote restored snapshot to sessionStorage', newSnap) } catch {}
+      } catch {}
       navigate(location.pathname, { replace: true, state: {} })
       // Allow persistence again after a brief delay
       timeout1 = setTimeout(() => { skipPersistRef.current = false }, 100)
@@ -91,7 +114,7 @@ export default function Search() {
 
     // If no route state restore occurred, attempt sessionStorage restore
     // Always restore from sessionStorage if available (removed pristine check)
-    if (!restoredRef.current && !isReloadRef.current) {
+    if (!restoredRef.current && !isReloadRef.current && !skipSessionRestoreRef.current) {
       try {
         const raw = sessionStorage.getItem('searchSnapshot')
         if (raw) {
@@ -105,8 +128,21 @@ export default function Search() {
             if (Array.isArray(snap.events)) setEvents(snap.events)
             if (typeof snap.hasSearched === 'boolean') setHasSearched(snap.hasSearched)
             setShowSuggestions(false)
-            // Allow persistence again after a brief delay
-            timeout2 = setTimeout(() => { skipPersistRef.current = false }, 100)
+                // Restore scroll position from the persisted snapshot
+                try {
+                  const restoredScroll = typeof snap.scrollY === 'number' ? snap.scrollY : 0
+                  requestAnimationFrame(() => {
+                    try { window.scrollTo({ top: restoredScroll, behavior: 'auto' }) } catch {}
+                  })
+                } catch {}
+                // Re-write snapshot to refresh timestamp so other components/readers see the freshest copy
+              try {
+                  const newSnap = { formData: snap.formData || {}, events: Array.isArray(snap.events) ? snap.events : [], hasSearched: !!snap.hasSearched, scrollY: snap.scrollY || 0, timestamp: Date.now() }
+                sessionStorage.setItem('searchSnapshot', JSON.stringify(newSnap))
+                try { console.debug('[Search] refreshed sessionStorage snapshot', newSnap) } catch {}
+              } catch {}
+              // Allow persistence again after a brief delay
+              timeout2 = setTimeout(() => { skipPersistRef.current = false }, 100)
           }
         }
       } catch (e) {
@@ -144,6 +180,7 @@ export default function Search() {
       formData: { ...formData },
       events,
       hasSearched,
+      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
       timestamp: Date.now()
     }
     try {
@@ -755,7 +792,7 @@ export default function Search() {
                 <div
                   key={idx}
                   className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => navigate(`/event/${event.id}`, { state: { from: 'search', searchSnapshot: { formData, events, hasSearched } } })}
+                  onClick={() => navigate(`/event/${event.id}`, { state: { from: 'search', searchSnapshot: { formData, events, hasSearched, scrollY: (typeof window !== 'undefined' ? window.scrollY : 0) } } })}
                 >
                   {/* Event Image */}
                   <div className="relative h-48 bg-gray-200 overflow-hidden">
