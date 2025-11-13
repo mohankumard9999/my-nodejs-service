@@ -446,6 +446,7 @@ export default function Search() {
       return
     }
 
+    // Don't clear suggestions or close dropdown while loading; keep previous suggestions visible
     setLoadingSuggestions(true)
     try {
       // Use Vite env variable VITE_API_BASE to allow dev proxying to backend (e.g. http://localhost:8080)
@@ -492,8 +493,7 @@ export default function Search() {
       setActiveIndex(-1)
     } catch (err) {
       console.error('Suggestion fetch error', err)
-      setSuggestions([])
-      // Show helper text only if user manually opened suggestions.
+      // Don't clear suggestions or close dropdown on error; keep previous suggestions visible
       if (manualOpenRef.current) setShowSuggestions(true)
     } finally {
       setLoadingSuggestions(false)
@@ -691,13 +691,10 @@ export default function Search() {
 
               {showSuggestions && (
                 <ul className="absolute left-0 right-0 z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-sm text-sm">
-                      {loadingSuggestions && (
-                        <li className="p-2 text-gray-500">Loading...</li>
-                      )}
-                      {!loadingSuggestions && suggestions.length === 0 && showSuggestions && (
+                      {suggestions.length === 0 && showSuggestions && (
                         <li className="p-3 text-gray-700">Start typing to see options</li>
                       )}
-                      {!loadingSuggestions && suggestions.map((s, idx) => (
+                      {suggestions.map((s, idx) => (
                         <li
                           key={`${s}-${idx}`}
                           onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s) }}
