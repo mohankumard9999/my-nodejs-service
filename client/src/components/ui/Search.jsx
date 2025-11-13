@@ -6,6 +6,7 @@ import { Label } from './label'
 import { Button } from './button'
 import { Switch } from './switch'
 import { useFavorites } from '../../contexts/FavoritesContext'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from './select'
 
 export default function Search() {
   const navigate = useNavigate()
@@ -53,30 +54,53 @@ export default function Search() {
     restoredRef.current = false
     // Reset any one-time skip flags for session restore so each mount starts fresh
     skipSessionRestoreRef.current = false
-    try { console.debug('[Search] mount, location.state=', location.state) } catch {}
+    try {
+      console.debug('[Search] mount', {
+        routeState: location.state || null,
+        routeSource: location.state?.source || null,
+        path: location.pathname
+      })
+    } catch {}
     
     // Detect full reload; do NOT clear the snapshot automatically.
     // Keeping snapshot ensures desktop navbar restoration remains reliable across navigations.
     try {
       const nav = performance && performance.getEntriesByType && performance.getEntriesByType('navigation')?.[0]
       if (nav && nav.type === 'reload') {
+        // Log manual reload only once per page load using timeOrigin as a stable marker
+        try {
+          const key = 'searchReloadLoggedTimeOrigin'
+          const curr = String(performance && performance.timeOrigin ? performance.timeOrigin : Date.now())
+          const prev = sessionStorage.getItem(key)
+          if (prev !== curr) {
+            console.debug('[manual reload]')
+            sessionStorage.setItem(key, curr)
+          }
+        } catch {}
+        // Mark this mount as following a reload so we don't auto-restore scroll to top
         isReloadRef.current = true
-        try { console.debug('[Search] page reload detected - preserving existing searchSnapshot for retention') } catch {}
       }
     } catch {}
 
     let timeout1, timeout2 // Track timeouts for cleanup
 
     // If route tells us to clear any persisted snapshot for THIS navigation (e.g., we came from Favorites),
-    // skip restoring from sessionStorage for this mount but DO NOT delete the persisted snapshot so that
-    // subsequent navigations (e.g., clicking Search from Favorites later) can still restore it.
+    // delete the persisted snapshot and set a short-lived tombstone so future mounts won't restore
+    // until the user performs a new search (which will clear the tombstone when it persists again).
     const routeState = location.state || {}
     if (routeState.clearSnapshot) {
       skipSessionRestoreRef.current = true
       // Ensure no restoration happens and clear the history state flag
       restoredRef.current = false
       skipPersistRef.current = false
-      try { console.debug('[Search] clearSnapshot requested: skipping session restore for this mount') } catch {}
+  try { console.debug('[Search] clearSnapshot requested', { action: 'skip-restore-this-mount', routeSource: routeState.source || null }) } catch {}
+      // Actively remove any existing snapshot and mark a tombstone so subsequent mounts won't restore
+      try {
+        sessionStorage.removeItem('searchSnapshot')
+        const ts = String(Date.now())
+        sessionStorage.setItem('searchSnapshotCleared', ts)
+        try { console.debug('[Search] cleared session snapshot and set tombstone', { clearedAt: ts, routeSource: routeState.source || null }) } catch {}
+      } catch {}
       // Remove the clearSnapshot flag from history to avoid repeated behavior
       navigate(location.pathname, { replace: true, state: {} })
       return
@@ -88,7 +112,15 @@ export default function Search() {
       suppressSuggestRef.current = true
       skipPersistRef.current = true // Skip persistence during restoration
       manualOpenRef.current = false
-      try { console.debug('[Search] restoring from route state, st=', st) } catch {}
+      try {
+        console.debug('[Search] route restore', {
+          action: 'restore-from-route',
+          routeSource: routeState.source || null,
+          events: Array.isArray(st.events) ? st.events.length : 0,
+          hasSearched: !!st.hasSearched,
+          scrollY: typeof st.scrollY === 'number' ? st.scrollY : 0
+        })
+      } catch {}
       if (st.formData) setFormData(st.formData)
       if (Array.isArray(st.events)) setEvents(st.events)
       if (typeof st.hasSearched === 'boolean') setHasSearched(st.hasSearched)
@@ -112,7 +144,7 @@ export default function Search() {
           timestamp: Date.now()
         }
         sessionStorage.setItem('searchSnapshot', JSON.stringify(newSnap))
-        try { console.debug('[Search] wrote restored snapshot to sessionStorage', newSnap) } catch {}
+  try { console.debug('[Search] wrote restored snapshot to sessionStorage', { eventsCount: newSnap.events.length, hasSearched: newSnap.hasSearched, scrollY: newSnap.scrollY, ts: newSnap.timestamp }) } catch {}
       } catch {}
       navigate(location.pathname, { replace: true, state: {} })
       // Allow persistence again after a brief delay
@@ -124,14 +156,26 @@ export default function Search() {
     // Always restore from sessionStorage if available (removed pristine check)
     if (!restoredRef.current && !isReloadRef.current && !skipSessionRestoreRef.current) {
       try {
-        const raw = sessionStorage.getItem('searchSnapshot')
-        if (raw) {
+        const clearedMarker = sessionStorage.getItem('searchSnapshotCleared')
+        if (clearedMarker) {
+          try { console.debug('[Search] session restore skipped (cleared tombstone present)', { clearedAt: clearedMarker }) } catch {}
+        } else {
+          const raw = sessionStorage.getItem('searchSnapshot')
+          if (raw) {
           const snap = JSON.parse(raw)
           if (snap && typeof snap === 'object' && snap.formData && Array.isArray(snap.events)) {
             restoredRef.current = true
             suppressSuggestRef.current = true
             skipPersistRef.current = true // Skip persistence during restoration
             manualOpenRef.current = false
+            try {
+              console.debug('[Search] session restore', {
+                action: 'restore-from-session',
+                events: Array.isArray(snap.events) ? snap.events.length : 0,
+                hasSearched: !!snap.hasSearched,
+                scrollY: typeof snap.scrollY === 'number' ? snap.scrollY : 0
+              })
+            } catch {}
             if (snap.formData) setFormData(snap.formData)
             if (Array.isArray(snap.events)) setEvents(snap.events)
             if (typeof snap.hasSearched === 'boolean') setHasSearched(snap.hasSearched)
@@ -147,11 +191,12 @@ export default function Search() {
               try {
                   const newSnap = { formData: snap.formData || {}, events: Array.isArray(snap.events) ? snap.events : [], hasSearched: !!snap.hasSearched, scrollY: snap.scrollY || 0, timestamp: Date.now() }
                 sessionStorage.setItem('searchSnapshot', JSON.stringify(newSnap))
-                try { console.debug('[Search] refreshed sessionStorage snapshot', newSnap) } catch {}
+                try { console.debug('[Search] refreshed sessionStorage snapshot', { eventsCount: newSnap.events.length, hasSearched: newSnap.hasSearched, scrollY: newSnap.scrollY, ts: newSnap.timestamp }) } catch {}
               } catch {}
               // Allow persistence again after a brief delay
               timeout2 = setTimeout(() => { skipPersistRef.current = false }, 100)
           }
+        }
         }
       } catch (e) {
         console.warn('Failed to restore searchSnapshot from sessionStorage', e)
@@ -194,6 +239,14 @@ export default function Search() {
     try {
       try { console.debug('[Search] persist -> writing session snapshot', { eventsCount: events.length, hasSearched, scrollY: snapshot.scrollY, ts: snapshot.timestamp }) } catch {}
       sessionStorage.setItem('searchSnapshot', JSON.stringify(snapshot))
+      // Clear any prior tombstone now that we have a fresh snapshot
+      try {
+        const had = sessionStorage.getItem('searchSnapshotCleared')
+        if (had) {
+          sessionStorage.removeItem('searchSnapshotCleared')
+          try { console.debug('[Search] persist -> cleared tombstone', { prevClearedAt: had }) } catch {}
+        }
+      } catch {}
     } catch {}
   }, [formData, events, hasSearched])
 
@@ -248,6 +301,7 @@ export default function Search() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    try { console.debug('[Search] submit clicked', { formData }) } catch {}
     
     // Validation
     const newErrors = {}
@@ -331,6 +385,7 @@ export default function Search() {
         })
 
         setEvents(sorted)
+        try { console.debug('[Search] results received', { count: sorted.length }) } catch {}
         setIsSearching(false)
       })
       .catch(err => {
@@ -663,19 +718,50 @@ export default function Search() {
             <Label htmlFor="category" className="text-xs font-medium mb-2 block">
               Category <span className="text-red-500">*</span>
             </Label>
-            <select
-              id="category"
-              value={formData.category}
-              onChange={(e) => setFormData({...formData, category: e.target.value})}
-              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
-            >
-              <option value="all">All</option>
-              <option value="music">Music</option>
-              <option value="sports">Sports</option>
-              <option value="arts">Arts & Theatre</option>
-              <option value="film">Film</option>
-              <option value="miscellaneous">Miscellaneous</option>
-            </select>
+            {/* Mobile: custom select (Radix) for better dropdown UI */}
+            <div className="md:hidden">
+              <Select
+                value={formData.category}
+                onValueChange={(v) => setFormData({ ...formData, category: v })}
+              >
+                <SelectTrigger id="category" className="h-10 px-3 py-2 text-sm">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent position="popper" className="z-[60]">
+                  <SelectItem className="py-1.5 text-sm" value="all">All</SelectItem>
+                  <SelectItem className="py-1.5 text-sm" value="music">Music</SelectItem>
+                  <SelectItem className="py-1.5 text-sm" value="sports">Sports</SelectItem>
+                  <SelectItem className="py-1.5 text-sm" value="arts">Arts & Theatre</SelectItem>
+                  <SelectItem className="py-1.5 text-sm" value="film">Film</SelectItem>
+                  <SelectItem className="py-1.5 text-sm" value="miscellaneous">Miscellaneous</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Desktop: switch to styled Radix Select to match design */}
+            <div className="hidden md:block">
+              <Select
+                value={formData.category}
+                onValueChange={(v) => setFormData({ ...formData, category: v })}
+              >
+                <SelectTrigger
+                  id="category"
+                  className="h-8 px-2 py-1 text-xs bg-white border border-gray-200 rounded-md shadow-sm"
+                >
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  className="z-[60] bg-white text-gray-900 border border-gray-200 shadow-lg rounded-md"
+                >
+                  <SelectItem className="py-1.5 text-sm text-gray-800 focus:bg-gray-100 focus:text-gray-900" value="all">All</SelectItem>
+                  <SelectItem className="py-1.5 text-sm text-gray-800 focus:bg-gray-100 focus:text-gray-900" value="music">Music</SelectItem>
+                  <SelectItem className="py-1.5 text-sm text-gray-800 focus:bg-gray-100 focus:text-gray-900" value="sports">Sports</SelectItem>
+                  <SelectItem className="py-1.5 text-sm text-gray-800 focus:bg-gray-100 focus:text-gray-900" value="arts">Arts & Theatre</SelectItem>
+                  <SelectItem className="py-1.5 text-sm text-gray-800 focus:bg-gray-100 focus:text-gray-900" value="film">Film</SelectItem>
+                  <SelectItem className="py-1.5 text-sm text-gray-800 focus:bg-gray-100 focus:text-gray-900" value="miscellaneous">Miscellaneous</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
             {/* Location (responsive: switch moves below on small screens) */}

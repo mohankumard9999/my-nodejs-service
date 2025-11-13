@@ -48,6 +48,7 @@ export default function Navbar() {
               }
               const onDesktopSearchClick = () => {
                 try {
+                  console.debug('[navbar search]', { device: 'desktop', pathname: location.pathname })
                   const info = {
                     hasSnapshot: !!snapshot,
                     eventsCount: snapshot?.events?.length || 0,
@@ -55,7 +56,7 @@ export default function Navbar() {
                     scrollY: typeof snapshot?.scrollY === 'number' ? snapshot.scrollY : null,
                     timestamp: snapshot?.timestamp || null,
                     pathname: location.pathname,
-                    source: 'NavbarDesktop'
+                    source: 'navbar-desktop-search'
                   }
                   console.debug('[Navbar] Desktop Search clicked -> restoring snapshot if present', info)
                 } catch {}
@@ -63,7 +64,7 @@ export default function Navbar() {
               return (
                 <Link
                   to="/search"
-                  state={snapshot ? { restore: snapshot } : undefined}
+                  state={snapshot ? { restore: snapshot, source: 'navbar-desktop-search' } : { source: 'navbar-desktop-search' }}
                   onClick={onDesktopSearchClick}
                   className={`flex items-center gap-2 text-sm transition-colors focus:outline-none focus-visible:outline-none ${
                     location.pathname === '/search' ? 'text-black' : 'text-gray-500 hover:text-gray-700'
@@ -77,6 +78,7 @@ export default function Navbar() {
 
             <Link
               to="/favorites"
+              onClick={() => { try { console.debug('[navbar favorite]', { device: 'desktop', pathname: location.pathname }) } catch {} }}
               className={`flex items-center gap-2 text-sm transition-colors focus:outline-none focus-visible:outline-none ${
                 location.pathname === '/favorites' ? 'text-black' : 'text-gray-500 hover:text-gray-700'
               }`}
@@ -130,11 +132,22 @@ export function MobileNavOverlay({ open, onClose }) {
         }
       } catch {}
       if (snapshot) {
-        try { console.debug('[Navbar] Mobile Search tapped -> restoring snapshot', { eventsCount: snapshot.events.length, scrollY: snapshot.scrollY, hasSearched: !!snapshot.hasSearched }) } catch {}
-        return navigate(path, { state: { restore: snapshot } })
+        try {
+          console.debug('[navbar search]', { device: 'mobile', pathname: path })
+          console.debug('[Navbar] Mobile Search tapped -> restoring snapshot', {
+            eventsCount: snapshot.events.length,
+            scrollY: snapshot.scrollY,
+            hasSearched: !!snapshot.hasSearched,
+            source: 'navbar-mobile-search'
+          })
+        } catch {}
+        return navigate(path, { state: { restore: snapshot, source: 'navbar-mobile-search' } })
       }
     }
-    navigate(path)
+    if (path === '/favorites') {
+      try { console.debug('[navbar favorite]', { device: 'mobile', pathname: path }) } catch {}
+    }
+    navigate(path, { state: { source: 'navbar-mobile' } })
   }
 
   const overlay = (
@@ -161,7 +174,7 @@ export function MobileNavOverlay({ open, onClose }) {
           {/* Search-like input row */}
             <button
               onClick={() => go('/search')}
-              className={`w-full flex items-center justify-between gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${(isSearch || isEventPage) ? 'bg-white' : 'bg-gray-100'}`}
+              className={`w-full flex items-center justify-between gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${isSearch ? 'bg-gray-100' : 'bg-white'}`}
             >
             <div className="flex items-center gap-3">
               <SearchIcon className="w-5 h-5 text-gray-600" />
@@ -172,7 +185,7 @@ export function MobileNavOverlay({ open, onClose }) {
           {/* Favorites row */}
             <button
               onClick={() => go('/favorites')}
-              className={`w-full flex items-center gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${(isFavorites || isEventPage) ? 'bg-white' : 'bg-gray-100'}`}
+              className={`w-full flex items-center gap-3 rounded-lg text-left pl-3 pr-4 py-1.5 ${isFavorites ? 'bg-gray-100' : 'bg-white'}`}
             >
             <Heart className="w-5 h-5 text-gray-600" />
             <span className="text-sm text-gray-700">Favorites</span>

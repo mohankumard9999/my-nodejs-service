@@ -188,16 +188,26 @@ export default function EventDetails() {
           if (location?.state?.from === 'search') {
             const snap = location.state?.searchSnapshot || null
             if (snap) {
-              navigate('/search', { state: { restore: snap } })
+              try {
+                console.debug('[back to search]', { from: 'search' })
+                console.debug('[EventDetails] Back to Search clicked (from search) -> restoring snapshot', { eventsCount: snap?.events?.length || 0, hasSearched: !!snap?.hasSearched, scrollY: snap?.scrollY || 0 })
+              } catch {}
+              navigate('/search', { state: { restore: snap, source: 'event-back-from-search' } })
             } else {
-              navigate('/search')
+              try { console.debug('[back to search]', { from: 'search' }) } catch {}
+              navigate('/search', { state: { source: 'event-back-from-search' } })
             }
           } else if (location?.state?.from === 'favorites') {
             // If navigated from Favorites, ensure we open a fresh/empty search page
             // by instructing the Search page to clear any persisted snapshot
-            navigate('/search', { state: { clearSnapshot: true } })
+            try {
+              console.debug('[back to search]', { from: 'favorites' })
+              console.debug('[EventDetails] Back to Search clicked (from favorites) -> requesting clearSnapshot')
+            } catch {}
+            navigate('/search', { state: { clearSnapshot: true, source: 'event-back-from-favorites' } })
           } else {
-            navigate('/search')
+            try { console.debug('[back to search]', { from: 'generic' }) } catch {}
+            navigate('/search', { state: { source: 'event-back-generic' } })
           }
         }}
         className="flex items-center gap-1 text-sm text-gray-600 bg-transparent mb-6 hover:text-gray-900 focus:outline-none focus-visible:outline-none"
@@ -221,8 +231,10 @@ export default function EventDetails() {
       {!loading && !error && event && (
         <div>
           {/* Header Row (mobile: actions beside name) */}
-          <div className="mb-6 flex items-start justify-between gap-3 md:gap-4 flex-wrap md:flex-nowrap">
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight flex-1 min-w-[200px] leading-tight">{event.name}</h1>
+          <div className="mb-6 flex items-start justify-between gap-3 md:gap-4 flex-nowrap">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight flex-1 min-w-0 md:min-w-[200px] leading-tight break-words">
+              {event.name}
+            </h1>
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
               {ticketUrl && (
                 <a
@@ -236,7 +248,7 @@ export default function EventDetails() {
               )}
               <button
                 onClick={() => { if (event) toggleFavorite(event) }}
-                className="p-2 md:p-2 bg-white border border-gray-200 rounded-lg md:rounded hover:bg-gray-50 flex items-center justify-center"
+                className="p-2 md:p-2 bg-white border border-gray-200 rounded-lg md:rounded hover:bg-gray-50 flex items-center justify-center h-9 w-9 md:h-auto md:w-auto ring-1 ring-gray-200 md:ring-0"
                 aria-label="Toggle Favorite"
               >
                 <Heart
@@ -397,7 +409,7 @@ export default function EventDetails() {
                             href={spotify.artist.external_urls.spotify}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 mt-3 px-2.5 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 visited:text-white active:text-white focus:text-white [&:visited]:text-white"
+                            className="inline-flex items-center gap-1 mt-3 px-2.5 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 hover:text-white visited:text-white active:text-white focus:text-white [&:visited]:text-white"
                           >
                             Open in Spotify <ExternalLink size={11} />
                           </a>
